@@ -33,6 +33,7 @@
 
 <!-- ZXing works on iOS Safari over HTTPS -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&family=Source+Code+Pro:wght@400;500&display=swap');
@@ -1133,7 +1134,10 @@ select option { background: var(--surface); }
 <!-- HEADER -->
 <header>
   <h1>🥫 Pantry</h1>
-  <span class="hdr-right" id="hdr-count">0 items</span>
+  <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
+    <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
+    <span id="hdr-count">0 items</span>
+  </div>
 </header>
 
 <!-- PAGES -->
@@ -1552,7 +1556,21 @@ select option { background: var(--surface); }
 <div id="toast"></div>
 
 <script>
-// ── STATE ────────────────────────────────────────
+// ── SUPABASE ─────────────────────────────────────
+const SUPA_URL = 'https://klcgjrwkaazftyuvnpnm.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsY2dqcndrYWF6ZnR5dXZucG5tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODUyNjAsImV4cCI6MjA4ODg2MTI2MH0.vtqejJdeUZT8eOGob8TdVt7Iftzw9yGARdDfrGY4Mrc';
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+function syncDot(state) {
+  // state: 'syncing' = amber, 'ok' = green, 'err' = red, 'idle' = grey
+  const dot = document.getElementById('sync-dot');
+  if (!dot) return;
+  const colors = { syncing: '#D4A030', ok: '#6BAA6B', err: '#C04040', idle: '#9A7D65' };
+  dot.style.background = colors[state] || colors.idle;
+  dot.title = { syncing: 'Syncing…', ok: 'Synced ✓', err: 'Sync error — changes saved locally', idle: 'Idle' }[state] || '';
+}
+
+// ── STATE ─────────────────────────────────────────
 let inv = JSON.parse(localStorage.getItem('pti') || '[]');
 let groc = JSON.parse(localStorage.getItem('ptg') || '[]');
 let myPLUs = JSON.parse(localStorage.getItem('ptp') || '{}');
@@ -1561,8 +1579,136 @@ let pending = null;
 let pendPLU = null;
 let scanActive = false;
 let codeReader = null;
+let syncTimer = null;
 
-// ── PLU DB ───────────────────────────────────────
+// ── SAVE — writes locally + queues cloud sync ────
+function save() {
+  localStorage.setItem('pti', JSON.stringify(inv));
+  localStorage.setItem('ptg', JSON.stringify(groc));
+  localStorage.setItem('ptp', JSON.stringify(myPLUs));
+  document.getElementById('hdr-count').textContent = inv.length + ' item' + (inv.length !== 1 ? 's' : '');
+  // Debounce cloud sync — wait 800ms after last change before pushing
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncToCloud, 800);
+  syncDot('syncing');
+}
+
+// ── CLOUD SYNC ────────────────────────────────────
+async function syncToCloud() {
+  try {
+    // Upsert full inventory
+    if (inv.length > 0) {
+      const invRows = inv.map(i => ({
+        id: i.id,
+        barcode: i.barcode || null,
+        name: i.name || '',
+        emoji: i.emoji || null,
+        qty: i.qty || 0,
+        cat: i.cat || 'pantry',
+        exp: i.exp || null,
+        low: i.low || 0,
+        src: i.src || 'store',
+        case_size: i.caseSize || 0
+      }));
+      const { error: invErr } = await sb.from('inventory').upsert(invRows, { onConflict: 'id' });
+      if (invErr) throw invErr;
+    }
+
+    // Upsert grocery list
+    if (groc.length > 0) {
+      const grocRows = groc.map(g => ({
+        id: g.id,
+        name: g.name || '',
+        qty: g.qty || 1,
+        done: g.done || false,
+        src: g.src || 'store'
+      }));
+      const { error: grocErr } = await sb.from('grocery').upsert(grocRows, { onConflict: 'id' });
+      if (grocErr) throw grocErr;
+    }
+
+    // Delete removed items — find IDs in cloud not in local
+    await cleanCloud();
+
+    syncDot('ok');
+    setTimeout(() => syncDot('idle'), 3000);
+  } catch (e) {
+    console.error('Sync error:', e);
+    syncDot('err');
+  }
+}
+
+async function cleanCloud() {
+  // Remove inventory rows that no longer exist locally
+  const { data: cloudInv } = await sb.from('inventory').select('id');
+  if (cloudInv && cloudInv.length > 0) {
+    const localIds = new Set(inv.map(i => i.id));
+    const toDelete = cloudInv.filter(r => !localIds.has(r.id)).map(r => r.id);
+    if (toDelete.length > 0) await sb.from('inventory').delete().in('id', toDelete);
+  }
+  // Remove grocery rows that no longer exist locally
+  const { data: cloudGroc } = await sb.from('grocery').select('id');
+  if (cloudGroc && cloudGroc.length > 0) {
+    const localGIds = new Set(groc.map(g => g.id));
+    const toDeleteG = cloudGroc.filter(r => !localGIds.has(r.id)).map(r => r.id);
+    if (toDeleteG.length > 0) await sb.from('grocery').delete().in('id', toDeleteG);
+  }
+}
+
+// ── LOAD FROM CLOUD on startup ────────────────────
+async function loadFromCloud() {
+  syncDot('syncing');
+  try {
+    const [{ data: invData, error: invErr }, { data: grocData, error: grocErr }] = await Promise.all([
+      sb.from('inventory').select('*'),
+      sb.from('grocery').select('*')
+    ]);
+
+    if (invErr || grocErr) throw invErr || grocErr;
+
+    if (invData && invData.length > 0) {
+      inv = invData.map(r => ({
+        id: r.id,
+        barcode: r.barcode,
+        name: r.name,
+        emoji: r.emoji,
+        qty: r.qty,
+        cat: r.cat,
+        exp: r.exp,
+        low: r.low,
+        src: r.src,
+        caseSize: r.case_size || 0
+      }));
+      localStorage.setItem('pti', JSON.stringify(inv));
+    }
+
+    if (grocData && grocData.length > 0) {
+      groc = grocData.map(r => ({
+        id: r.id,
+        name: r.name,
+        qty: r.qty,
+        done: r.done,
+        src: r.src
+      }));
+      localStorage.setItem('ptg', JSON.stringify(groc));
+    }
+
+    renderInv();
+    renderGroc();
+    document.getElementById('hdr-count').textContent = inv.length + ' item' + (inv.length !== 1 ? 's' : '');
+    syncDot('ok');
+    setTimeout(() => syncDot('idle'), 3000);
+
+    // If cloud is empty but local has data, push local up
+    if ((!invData || invData.length === 0) && inv.length > 0) {
+      syncToCloud();
+    }
+  } catch (e) {
+    console.error('Load error:', e);
+    syncDot('err');
+    toast('Offline — using local data', 'a');
+  }
+}
 const PLUSDB = {
   '3000':{ name:'Grapes (Red)', emoji:'🍇' },
   '3024':{ name:'Grapes (Green)', emoji:'🍇' },
@@ -2418,8 +2564,11 @@ function restartOnboarding(clearAll) {
 // ── INIT ──────────────────────────────────────────
 save();
 renderInv();
+renderGroc();
 renderProd();
 checkOnboarding();
+// Load latest data from Supabase on every app open
+loadFromCloud();
 
 // ── SERVICE WORKER (PWA offline support) ──────────
 if ('serviceWorker' in navigator) {

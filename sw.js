@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pantry-v1';
+const CACHE_NAME = 'pantry-v2';
 
 const ASSETS = [
   './',
@@ -7,6 +7,7 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
   'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&family=Source+Code+Pro:wght@400;500&display=swap'
 ];
 
