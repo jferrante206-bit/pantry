@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pantry-v2';
+const CACHE_NAME = 'pantry-v3';
 
 const ASSETS = [
   './',
@@ -11,7 +11,12 @@ const ASSETS = [
   'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&family=Source+Code+Pro:wght@400;500&display=swap'
 ];
 
-// Install — cache all core assets
+// Listen for skip waiting message from app
+self.addEventListener('message', event => {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
+});
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {

@@ -1144,6 +1144,11 @@ select option { background: var(--surface); }
   </div>
 </header>
 
+<!-- UPDATE BANNER -->
+<div id="update-banner" style="display:none;background:var(--orange);color:white;text-align:center;padding:10px 16px;font-size:0.85rem;font-weight:700;cursor:pointer;flex-shrink:0" onclick="applyUpdate()">
+  🔄 Update available — tap to refresh
+</div>
+
 <!-- PAGES -->
 <div class="pages">
 
@@ -2598,12 +2603,48 @@ checkOnboarding();
 // Load latest data from Supabase on every app open
 loadFromCloud();
 
-// ── SERVICE WORKER (PWA offline support) ──────────
+// ── SERVICE WORKER (PWA offline + update detection) ──
+let newWorker = null;
+
+function applyUpdate() {
+  if (newWorker) {
+    newWorker.postMessage({ action: 'skipWaiting' });
+  } else {
+    window.location.reload();
+  }
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
+      .then(reg => {
+        console.log('SW registered:', reg.scope);
+
+        // Check for updates every time the app is opened
+        reg.update();
+
+        // New service worker found and waiting
+        reg.addEventListener('updatefound', () => {
+          newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.statechange === 'installed' && navigator.serviceWorker.controller) {
+              document.getElementById('update-banner').style.display = 'block';
+            }
+          });
+        });
+
+        // If a new SW is already waiting when app opens
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          newWorker = reg.waiting;
+          document.getElementById('update-banner').style.display = 'block';
+        }
+      })
       .catch(err => console.log('SW error:', err));
+
+    // When the new SW takes over, reload to get fresh app
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
   });
 }
 </script>
