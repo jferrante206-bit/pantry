@@ -1049,7 +1049,7 @@ select option { background: var(--surface); }
     <div class="ob-welcome">
       <div class="ob-icon">🥫</div>
       <div class="ob-title">Welcome to<br>Pantry Tracker</div>
-      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.3 — Syntax Fix</div>
+      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.4 — Camera Diagnostics</div>
       <div class="ob-sub">Let's set up your kitchen. We'll do a quick scan of everything in your pantry and fridge to build your baseline inventory.</div>
 
       <div class="ob-steps">
@@ -1136,7 +1136,7 @@ select option { background: var(--surface); }
 <header>
   <div>
     <h1>🥫 Pantry</h1>
-    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.3 — Syntax Fix</div>
+    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.4 — Camera Diagnostics</div>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
     <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
@@ -1919,6 +1919,7 @@ async function diagCamera() {
   lines.push('BarcodeDetector: ' + ('BarcodeDetector' in window));
   lines.push('getUserMedia: ' + ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices));
   lines.push('ZXing: ' + (typeof ZXing !== 'undefined'));
+  lines.push('Supabase: ' + (sb !== null));
 
   if ('mediaDevices' in navigator) {
     try {
@@ -1939,9 +1940,9 @@ async function diagCamera() {
     lines.push('mediaDevices: NOT AVAILABLE');
   }
 
-  alert(lines.join('\n'));
+  // Show results in the scan status area instead of a popup
+  document.getElementById('scan-status').textContent = lines.join(' | ');
 }
-
 function stopScan() {
   const wrap = document.getElementById('video-wrap');
   const video = document.getElementById('video');
