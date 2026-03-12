@@ -1049,7 +1049,7 @@ select option { background: var(--surface); }
     <div class="ob-welcome">
       <div class="ob-icon">🥫</div>
       <div class="ob-title">Welcome to<br>Pantry Tracker</div>
-      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.0 — iOS Camera Fix</div>
+      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.1 — Camera Diagnostics</div>
       <div class="ob-sub">Let's set up your kitchen. We'll do a quick scan of everything in your pantry and fridge to build your baseline inventory.</div>
 
       <div class="ob-steps">
@@ -1136,7 +1136,7 @@ select option { background: var(--surface); }
 <header>
   <div>
     <h1>🥫 Pantry</h1>
-    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.0 — iOS Camera Fix</div>
+    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.1 — Camera Diagnostics</div>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
     <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
@@ -1157,6 +1157,9 @@ select option { background: var(--surface); }
     <div class="card">
       <div class="card-title">Scan Barcode</div>
       <div id="scan-status">Ready to scan</div>
+      <div style="margin-top:8px">
+        <button class="btn btn-ghost" style="font-size:0.72rem;padding:6px 10px" onclick="diagCamera()">🔍 Diagnose Camera</button>
+      </div>
       <div id="video-wrap">
         <video id="video" autoplay playsinline muted></video>
         <div class="scan-frame"><div class="scan-box"><div class="scan-line"></div></div></div>
@@ -1900,7 +1903,37 @@ async function zxingScan(video, wrap, status) {
   });
 }
 
-function stopScan() {
+async function diagCamera() {
+  const lines = [];
+  lines.push('iOS: ' + /iPhone|iPad/.test(navigator.userAgent));
+  lines.push('HTTPS: ' + (location.protocol === 'https:'));
+  lines.push('BarcodeDetector: ' + ('BarcodeDetector' in window));
+  lines.push('getUserMedia: ' + ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices));
+  lines.push('ZXing: ' + (typeof ZXing !== 'undefined'));
+
+  if ('mediaDevices' in navigator) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      lines.push('Cameras found: ' + cams.length);
+    } catch(e) {
+      lines.push('enumerateDevices error: ' + e.message);
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      lines.push('Camera stream: OK');
+      stream.getTracks().forEach(t => t.stop());
+    } catch(e) {
+      lines.push('Camera stream error: ' + e.name + ' — ' + e.message);
+    }
+  } else {
+    lines.push('mediaDevices: NOT AVAILABLE');
+  }
+
+  alert(lines.join('\n'));
+}
+
+
   scanActive = false;
   const wrap = document.getElementById('video-wrap');
   const video = document.getElementById('video');
