@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pantry-v5';
+const CACHE_NAME = 'pantry-v7';;
 
 const ASSETS = [
   './',

@@ -32,8 +32,8 @@
 <title>Pantry Tracker</title>
 
 <!-- ZXing works on iOS Safari over HTTPS -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&family=Source+Code+Pro:wght@400;500&display=swap');
@@ -1049,7 +1049,7 @@ select option { background: var(--surface); }
     <div class="ob-welcome">
       <div class="ob-icon">🥫</div>
       <div class="ob-title">Welcome to<br>Pantry Tracker</div>
-      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.1 — Camera Diagnostics</div>
+      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.3 — Syntax Fix</div>
       <div class="ob-sub">Let's set up your kitchen. We'll do a quick scan of everything in your pantry and fridge to build your baseline inventory.</div>
 
       <div class="ob-steps">
@@ -1136,7 +1136,7 @@ select option { background: var(--surface); }
 <header>
   <div>
     <h1>🥫 Pantry</h1>
-    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.1 — Camera Diagnostics</div>
+    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.3 — Syntax Fix</div>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
     <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
@@ -1607,7 +1607,14 @@ select option { background: var(--surface); }
 // ── SUPABASE ─────────────────────────────────────
 const SUPA_URL = 'https://klcgjrwkaazftyuvnpnm.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsY2dqcndrYWF6ZnR5dXZucG5tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODUyNjAsImV4cCI6MjA4ODg2MTI2MH0.vtqejJdeUZT8eOGob8TdVt7Iftzw9yGARdDfrGY4Mrc';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+let sb = null;
+try {
+  if (typeof supabase !== 'undefined') {
+    sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+  }
+} catch(e) {
+  console.warn('Supabase failed to init:', e);
+}
 
 function syncDot(state) {
   // state: 'syncing' = amber, 'ok' = green, 'err' = red, 'idle' = grey
@@ -1643,6 +1650,7 @@ function save() {
 
 // ── CLOUD SYNC ────────────────────────────────────
 async function syncToCloud() {
+  if (!sb) return; // Supabase not available, skip silently
   try {
     // Upsert full inventory
     if (inv.length > 0) {
@@ -1705,6 +1713,7 @@ async function cleanCloud() {
 
 // ── LOAD FROM CLOUD on startup ────────────────────
 async function loadFromCloud() {
+  if (!sb) { syncDot('err'); return; }
   syncDot('syncing');
   try {
     const [{ data: invData, error: invErr }, { data: grocData, error: grocErr }] = await Promise.all([
@@ -1933,8 +1942,7 @@ async function diagCamera() {
   alert(lines.join('\n'));
 }
 
-
-  scanActive = false;
+function stopScan() {
   const wrap = document.getElementById('video-wrap');
   const video = document.getElementById('video');
   wrap.style.display = 'none';
@@ -2655,13 +2663,21 @@ function restartOnboarding(clearAll) {
 }
 
 // ── INIT ──────────────────────────────────────────
-save();
-renderInv();
-renderGroc();
-renderProd();
-checkOnboarding();
-// Load latest data from Supabase on every app open
-loadFromCloud();
+window.addEventListener('load', () => {
+  // Re-init Supabase now that CDN scripts are definitely loaded
+  try {
+    if (!sb && typeof supabase !== 'undefined') {
+      sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+    }
+  } catch(e) { console.warn('Supabase init on load failed:', e); }
+
+  save();
+  renderInv();
+  renderGroc();
+  renderProd();
+  checkOnboarding();
+  loadFromCloud();
+});
 
 // ── SERVICE WORKER (PWA offline + update detection) ──
 let newWorker = null;
