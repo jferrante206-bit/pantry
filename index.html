@@ -1,0 +1,2434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pantry">
+<meta name="theme-color" content="#1C1008">
+<meta name="description" content="Kitchen pantry inventory and grocery list tracker">
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="manifest.json">
+
+<!-- iOS Home Screen Icons -->
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="57x57"  href="icon-57.png">
+<link rel="apple-touch-icon" sizes="60x60"  href="icon-60.png">
+<link rel="apple-touch-icon" sizes="72x72"  href="icon-72.png">
+<link rel="apple-touch-icon" sizes="76x76"  href="icon-76.png">
+<link rel="apple-touch-icon" sizes="114x114" href="icon-114.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icon-120.png">
+<link rel="apple-touch-icon" sizes="144x144" href="icon-144.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icon-167.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+
+<!-- iOS Splash / startup image color -->
+<meta name="msapplication-TileColor" content="#1C1008">
+<meta name="msapplication-TileImage" content="icon-144.png">
+
+<title>Pantry Tracker</title>
+
+<!-- ZXing works on iOS Safari over HTTPS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-js/0.19.1/zxing.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&family=Source+Code+Pro:wght@400;500&display=swap');
+
+:root {
+  --bg: #1C1008;
+  --surface: #2C1A0E;
+  --card: #3A2415;
+  --border: #5A3D28;
+  --cream: #F0E6D3;
+  --muted: #9A7D65;
+  --orange: #E07030;
+  --green: #6BAA6B;
+  --amber: #D4A030;
+  --red: #C04040;
+  --blue: #4A90C0;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Source Sans 3', sans-serif;
+  background: var(--bg);
+  color: var(--cream);
+}
+
+/* ── LAYOUT ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+}
+
+header {
+  background: var(--surface);
+  padding: calc(14px + var(--safe-top)) 20px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+header h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem;
+  letter-spacing: 0.01em;
+  color: var(--cream);
+}
+
+.hdr-right { font-family: 'Source Code Pro', monospace; font-size: 0.72rem; color: var(--muted); }
+
+.pages {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.page {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 16px calc(16px + var(--safe-bot));
+  display: none;
+}
+.page.active { display: block; }
+
+/* ── BOTTOM NAV ── */
+nav {
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: var(--safe-bot);
+  flex-shrink: 0;
+}
+
+.nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.6rem;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nav-btn .nav-icon { font-size: 1.3rem; line-height: 1; }
+.nav-btn.active { color: var(--orange); }
+.nav-btn:hover { color: var(--cream); }
+
+/* ── CARDS ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.1rem;
+  margin-bottom: 14px;
+  color: var(--cream);
+}
+
+/* ── SCANNER ── */
+#video-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  display: none;
+  margin-bottom: 12px;
+  aspect-ratio: 4/3;
+}
+
+#video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scan-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.scan-box {
+  width: 65%;
+  aspect-ratio: 3/1;
+  border: 2px solid var(--orange);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+  position: relative;
+}
+
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: var(--orange);
+  box-shadow: 0 0 8px var(--orange);
+  animation: scanline 1.8s ease-in-out infinite;
+  top: 50%;
+}
+
+@keyframes scanline {
+  0%, 100% { top: 10%; }
+  50% { top: 90%; }
+}
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: none;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); opacity: 0.85; }
+.btn-orange { background: var(--orange); color: white; }
+.btn-green { background: var(--green); color: white; }
+.btn-amber { background: var(--amber); color: #1C1008; }
+.btn-ghost { background: transparent; border: 1.5px solid var(--border); color: var(--cream); }
+.btn-red { background: var(--red); color: white; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* ── INPUTS ── */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 9px;
+  padding: 11px 14px;
+  color: var(--cream);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 0.9rem;
+  outline: none;
+  width: 100%;
+  -webkit-appearance: none;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus { border-color: var(--orange); }
+select option { background: var(--surface); }
+::placeholder { color: var(--muted); }
+
+.field-row { display: flex; gap: 10px; }
+.field-row .field { flex: 1; min-width: 0; }
+
+/* ── INTENT MODAL ── */
+#intent-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+#intent-overlay.show { display: flex; }
+
+#intent-sheet {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 22px 22px 0 0;
+  padding: 10px 20px calc(24px + var(--safe-bot));
+  width: 100%;
+  max-width: 520px;
+  animation: slideUp 0.25s cubic-bezier(0.32,0.72,0,1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-pill {
+  width: 36px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.sheet-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+
+.sheet-product .sp-emoji { font-size: 1.6rem; }
+.sheet-product .sp-name { font-weight: 600; font-size: 0.95rem; flex: 1; min-width: 0; }
+.sheet-product .sp-sub { font-family: 'Source Code Pro', monospace; font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+.sheet-product .sp-inv { font-size: 0.75rem; color: var(--amber); margin-top: 2px; font-weight: 600; }
+
+.intent-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.intent-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 13px;
+  color: var(--cream);
+  cursor: pointer;
+  margin-bottom: 9px;
+  text-align: left;
+  font-family: 'Source Sans 3', sans-serif;
+  transition: all 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.intent-btn:active { transform: scale(0.98); }
+.intent-btn.ib-green { border-color: var(--green); }
+.intent-btn.ib-green:hover, .intent-btn.ib-green:active { background: #1A3D1A; }
+.intent-btn.ib-red { border-color: var(--red); }
+.intent-btn.ib-red:hover, .intent-btn.ib-red:active { background: #3D1010; }
+.intent-btn.ib-amber { border-color: var(--amber); }
+.intent-btn.ib-amber:hover, .intent-btn.ib-amber:active { background: #3D2800; }
+.intent-btn.ib-blue { border-color: var(--blue); }
+.intent-btn.ib-blue:hover, .intent-btn.ib-blue:active { background: #1A2A3D; }
+
+.ib-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.ib-icon.g { background: #1A3D1A; }
+.ib-icon.r { background: #3D1010; }
+.ib-icon.a { background: #3D2800; }
+.ib-icon.b { background: #1A2A3D; }
+
+.ib-text .ib-title { font-weight: 700; font-size: 0.92rem; }
+.ib-text .ib-desc { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+/* ── ADD DETAILS PANEL (shown after choosing "add") ── */
+#add-details {
+  display: none;
+  margin-bottom: 14px;
+}
+#add-details.show { display: block; }
+#add-details .ad-title { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+.sheet-cancel {
+  width: 100%;
+  padding: 13px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 13px;
+  color: var(--muted);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+/* ── INVENTORY ITEMS ── */
+.inv-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.inv-item:hover { border-color: var(--muted); }
+.inv-item.low { border-color: var(--red); }
+
+.item-emoji {
+  font-size: 1.6rem;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.item-body { flex: 1; min-width: 0; }
+.item-name { font-weight: 600; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-sub { font-size: 0.72rem; color: var(--muted); display: flex; gap: 8px; margin-top: 3px; flex-wrap: wrap; }
+
+.qty-ctrl { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.qbtn {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--surface); border: 1.5px solid var(--border);
+  color: var(--cream); cursor: pointer; font-size: 1.1rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.1s; flex-shrink: 0;
+}
+.qbtn:active { background: var(--orange); border-color: var(--orange); }
+.qnum { font-family: 'Source Code Pro', monospace; font-size: 0.9rem; min-width: 22px; text-align: center; }
+
+.ibtns { display: flex; gap: 5px; flex-shrink: 0; }
+.ibtn {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: transparent; border: 1px solid var(--border);
+  cursor: pointer; color: var(--cream); font-size: 0.85rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.1s;
+}
+.ibtn:active { background: var(--surface); }
+
+/* ── BADGES ── */
+.badge {
+  font-size: 0.65rem; font-weight: 600; padding: 2px 7px;
+  border-radius: 20px; letter-spacing: 0.04em; white-space: nowrap;
+}
+.b-produce { background: #1A3D1A; color: #80CC80; }
+.b-pantry { background: #3D2800; color: #D4A060; }
+.b-dairy { background: #1A2A3D; color: #80AADD; }
+.b-frozen { background: #1A2E3D; color: #70BBDD; }
+.b-beverages { background: #1A1A3D; color: #9090DD; }
+.b-snacks { background: #3D1A2A; color: #DD8080; }
+.b-meat { background: #3D1A1A; color: #DD7070; }
+.b-bakery { background: #3D2D1A; color: #CC9A60; }
+.b-low { background: #3D1010; color: #EE6060; }
+.b-exp { background: #3D2A00; color: #DDC060; }
+.b-amazon { background: #1A2535; color: #70AAEE; }
+.b-store { background: #1A2A1A; color: #80CC80; }
+
+/* reorder threshold bar */
+.reorder-bar {
+  width: 100%;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 6px;
+  position: relative;
+  overflow: visible;
+}
+.reorder-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.reorder-fill.ok { background: var(--green); }
+.reorder-fill.warn { background: var(--amber); }
+.reorder-fill.low { background: var(--red); }
+
+/* grocery section headers */
+.groc-section-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+.groc-section-hdr .gsh-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.groc-section-hdr .gsh-copy {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 5px 10px;
+}
+
+/* ── GROCERY ── */
+.groc-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  margin-bottom: 7px;
+}
+.groc-item.done { opacity: 0.45; }
+.groc-item.done .gname { text-decoration: line-through; }
+
+.gchk {
+  width: 22px; height: 22px; border-radius: 6px;
+  border: 2px solid var(--border); background: transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; flex-shrink: 0; transition: all 0.15s;
+}
+.gchk.checked { background: var(--green); border-color: var(--green); }
+
+.gname { flex: 1; font-size: 0.88rem; }
+.gqty { font-family: 'Source Code Pro', monospace; font-size: 0.75rem; color: var(--muted); }
+
+.instacart-bar {
+  background: linear-gradient(135deg, #003D1F, #005A2C);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.instacart-bar .ic-logo { font-size: 1.8rem; }
+.instacart-bar .ic-text { flex: 1; }
+.instacart-bar h3 { font-size: 0.88rem; font-weight: 600; margin-bottom: 2px; }
+.instacart-bar p { font-size: 0.72rem; opacity: 0.65; }
+
+/* ── PRODUCE ── */
+.plu-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.plu-code { font-family: 'Source Code Pro', monospace; font-size: 0.78rem; color: var(--amber); background: var(--surface); padding: 3px 8px; border-radius: 6px; }
+
+/* ── SEARCH ── */
+.search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.search-row input { flex: 1; }
+.search-row select { width: auto; min-width: 100px; }
+
+/* ── SECTION LABEL ── */
+.sect-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
+
+/* ── EMPTY ── */
+.empty { text-align: center; padding: 50px 20px; color: var(--muted); }
+.empty .ei { font-size: 2.8rem; margin-bottom: 10px; }
+.empty p { font-size: 0.88rem; }
+
+/* ── PLU RESULT ── */
+#plu-result {
+  background: #1A3D1A;
+  border: 1px solid var(--green);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+  display: none;
+}
+
+/* ── TOAST ── */
+#toast {
+  position: fixed;
+  bottom: calc(80px + var(--safe-bot));
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--cream);
+  padding: 10px 18px;
+  border-radius: 30px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  opacity: 0;
+  transition: all 0.2s;
+  z-index: 999;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.g { border-color: var(--green); color: var(--green); }
+#toast.a { border-color: var(--amber); color: var(--amber); }
+
+/* ── SCANNER STATUS ── */
+#scan-status { font-size: 0.8rem; color: var(--muted); margin-bottom: 8px; min-height: 20px; }
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+/* low stock section */
+.low-banner {
+  background: #3D1010;
+  border: 1px solid var(--red);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  margin-bottom: 12px;
+  display: none;
+}
+/* ── HELP PAGE ── */
+.help-hero {
+  text-align: center;
+  padding: 24px 16px 20px;
+  margin-bottom: 4px;
+}
+.help-hero-icon { font-size: 2.8rem; margin-bottom: 10px; }
+.help-hero-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.3rem;
+  margin-bottom: 6px;
+}
+.help-hero-sub { font-size: 0.82rem; color: var(--muted); }
+
+.help-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 18px 0 9px;
+}
+
+.help-step-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 14px;
+}
+.hsc-number {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--orange);
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.hsc-body { flex: 1; }
+.hsc-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 6px; }
+.hsc-text { font-size: 0.82rem; color: var(--cream); line-height: 1.6; margin-bottom: 8px; }
+.hsc-tip {
+  font-size: 0.78rem;
+  color: var(--amber);
+  background: rgba(212,160,48,0.1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  line-height: 1.5;
+}
+
+.help-action-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 8px;
+}
+.hac-green { border-color: var(--green); }
+.hac-red { border-color: var(--red); }
+.hac-amber { border-color: var(--amber); }
+.hac-blue { border-color: var(--blue); }
+
+.hac-icon {
+  font-size: 1.3rem;
+  width: 38px; height: 38px;
+  border-radius: 9px;
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hac-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 4px; }
+.hac-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.6; }
+
+.help-threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+}
+.help-threshold-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.help-tip-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--cream);
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ── SHOPPING LINKS ── */
+.groc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  transition: opacity 0.2s;
+}
+.groc-item.done { opacity: 0.45; }
+.groc-item.done .gname { text-decoration: line-through; }
+
+.shop-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.shop-btn:active { transform: scale(0.96); opacity: 0.85; }
+
+.shop-amazon {
+  background: #F90;
+  color: #111;
+}
+.shop-instacart {
+  background: #00A651;
+  color: #fff;
+}
+.shop-src-toggle {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  padding: 5px 8px;
+}
+
+/* ── GROC ITEM LAYOUT ── */
+.gi-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.gi-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.gi-name-row {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gi-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gi-meta {
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* Section "Open All" bar */
+.shop-all-bar {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.shop-all-bar a {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: none;
+  flex: 1;
+  justify-content: center;
+}
+.shop-all-amazon { background: #F90; color: #111; }
+.shop-all-instacart { background: #00A651; color: #fff; }
+
+#onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#onboarding.hidden { display: none; }
+
+.ob-screen {
+  display: none;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: calc(20px + var(--safe-top)) 24px calc(24px + var(--safe-bot));
+}
+.ob-screen.active { display: flex; }
+
+/* Welcome screen */
+.ob-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0;
+}
+
+.ob-icon {
+  font-size: 4.5rem;
+  margin-bottom: 20px;
+  animation: obBounce 2s ease-in-out infinite;
+}
+@keyframes obBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.ob-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 2rem;
+  line-height: 1.2;
+  margin-bottom: 10px;
+  color: var(--cream);
+}
+
+.ob-sub {
+  font-size: 0.92rem;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 40px;
+  max-width: 300px;
+}
+
+.ob-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+  margin-bottom: 36px;
+}
+
+.ob-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 14px;
+  text-align: left;
+}
+
+.ob-step-icon {
+  font-size: 1.5rem;
+  width: 44px; height: 44px;
+  background: var(--surface);
+  border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.ob-step-text .ob-step-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 2px; }
+.ob-step-text .ob-step-desc { font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
+
+.ob-btn-primary {
+  width: 100%;
+  max-width: 340px;
+  padding: 16px;
+  background: var(--orange);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  margin-bottom: 12px;
+}
+.ob-btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+
+.ob-btn-skip {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 8px;
+}
+
+/* Scanning screen */
+.ob-scan-header {
+  margin-bottom: 20px;
+}
+.ob-scan-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.4rem;
+  margin-bottom: 6px;
+}
+.ob-scan-header p { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+
+.ob-counter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+}
+.ob-counter .oc-num {
+  font-family: 'Playfair Display', serif;
+  font-size: 2rem;
+  color: var(--orange);
+  min-width: 48px;
+}
+.ob-counter .oc-label { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+
+.ob-scanned-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.ob-scanned-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  animation: obSlideIn 0.2s ease;
+}
+@keyframes obSlideIn {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.ob-scanned-item .osi-emoji { font-size: 1.2rem; }
+.ob-scanned-item .osi-name { flex: 1; font-size: 0.85rem; font-weight: 600; }
+.ob-scanned-item .osi-qty {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.8rem;
+  color: var(--amber);
+  background: var(--surface);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.ob-done-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--green);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Finish screen */
+.ob-finish {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.ob-finish-icon { font-size: 4rem; margin-bottom: 16px; }
+.ob-finish-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.6rem;
+  margin-bottom: 10px;
+}
+.ob-finish-sub { font-size: 0.88rem; color: var(--muted); line-height: 1.7; margin-bottom: 32px; max-width: 300px; }
+.ob-stat {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.82rem;
+  color: var(--amber);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 20px;
+  margin-bottom: 28px;
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ══ ONBOARDING OVERLAY ══════════════════════════════ -->
+<div id="onboarding">
+
+  <!-- Screen 1: Welcome -->
+  <div class="ob-screen active" id="ob-s1">
+    <div class="ob-welcome">
+      <div class="ob-icon">🥫</div>
+      <div class="ob-title">Welcome to<br>Pantry Tracker</div>
+      <div class="ob-sub">Let's set up your kitchen. We'll do a quick scan of everything in your pantry and fridge to build your baseline inventory.</div>
+
+      <div class="ob-steps">
+        <div class="ob-step">
+          <div class="ob-step-icon">📷</div>
+          <div class="ob-step-text">
+            <div class="ob-step-title">Scan what you have</div>
+            <div class="ob-step-desc">Point your camera at barcodes to log existing items. Takes 5–10 minutes.</div>
+          </div>
+        </div>
+        <div class="ob-step">
+          <div class="ob-step-icon">📉</div>
+          <div class="ob-step-text">
+            <div class="ob-step-title">Set reorder thresholds</div>
+            <div class="ob-step-desc">Tell the app when to remind you to restock — before you run out.</div>
+          </div>
+        </div>
+        <div class="ob-step">
+          <div class="ob-step-icon">🛒</div>
+          <div class="ob-step-text">
+            <div class="ob-step-title">Auto grocery lists</div>
+            <div class="ob-step-desc">Lists build themselves as you use things — split by store and Amazon.</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="ob-btn-primary" onclick="obGoScan()">📷 Start Scanning My Pantry</button>
+      <button class="ob-btn-skip" onclick="obSkip()">Skip — I'll add items manually</button>
+    </div>
+  </div>
+
+  <!-- Screen 2: Active scanning session -->
+  <div class="ob-screen" id="ob-s2">
+    <div class="ob-scan-header">
+      <h2>Scan Your Pantry</h2>
+      <p>Scan barcodes one by one. Each scan adds the item instantly. Go through your fridge, pantry, and cupboards.</p>
+    </div>
+
+    <div class="ob-counter">
+      <div class="oc-num" id="ob-count">0</div>
+      <div class="oc-label">items scanned so far.<br>Keep going — scan everything!</div>
+    </div>
+
+    <!-- Inline scanner -->
+    <div id="ob-video-wrap" style="position:relative;width:100%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:12px;aspect-ratio:4/3;display:none">
+      <video id="ob-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
+      <div class="scan-frame"><div class="scan-box"><div class="scan-line"></div></div></div>
+    </div>
+
+    <div id="ob-scan-status" style="font-size:0.8rem;color:var(--muted);margin-bottom:8px;min-height:18px">Ready</div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-orange" onclick="obStartCam()" style="flex:1">📷 Camera</button>
+      <button class="btn btn-ghost" onclick="obStopCam()" style="flex:1">⏹ Stop</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="ob-manual" placeholder="Or type barcode manually..." inputmode="numeric" onkeydown="if(event.key==='Enter')obManualScan()" style="flex:1">
+      <button class="btn btn-green" onclick="obManualScan()">Add</button>
+    </div>
+
+    <div class="ob-scanned-list" id="ob-scanned-list">
+      <div style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem">Scanned items will appear here</div>
+    </div>
+
+    <button class="ob-done-btn" onclick="obFinish()">✓ Done — Finish Setup</button>
+  </div>
+
+  <!-- Screen 3: Finish / summary -->
+  <div class="ob-screen" id="ob-s3">
+    <div class="ob-finish">
+      <div class="ob-finish-icon">🎉</div>
+      <div class="ob-finish-title">Pantry Ready!</div>
+      <div class="ob-finish-sub">Your baseline inventory is set. From now on, scan items when you bring them home and when you throw out the empty container.</div>
+      <div class="ob-stat" id="ob-stat">0 items logged</div>
+      <button class="ob-btn-primary" onclick="obComplete()">Let's Go →</button>
+    </div>
+  </div>
+
+</div>
+<!-- ══ END ONBOARDING ══════════════════════════════════ -->
+
+<!-- HEADER -->
+<header>
+  <h1>🥫 Pantry</h1>
+  <span class="hdr-right" id="hdr-count">0 items</span>
+</header>
+
+<!-- PAGES -->
+<div class="pages">
+
+  <!-- SCAN -->
+  <div class="page active" id="p-scan">
+    <div class="card">
+      <div class="card-title">Scan Barcode</div>
+      <div id="scan-status">Ready to scan</div>
+      <div id="video-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="scan-frame"><div class="scan-box"><div class="scan-line"></div></div></div>
+      </div>
+      <div class="btn-row" style="margin-top:0;margin-bottom:12px">
+        <button class="btn btn-orange" onclick="startScan()">📷 Camera Scan</button>
+        <button class="btn btn-ghost" onclick="stopScan()">⏹ Stop</button>
+      </div>
+      <div class="field">
+        <label>Or enter barcode manually</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="man-bc" placeholder="Type or paste barcode..." inputmode="numeric" onkeydown="if(event.key==='Enter')doLookup()">
+          <button class="btn btn-green" onclick="doLookup()">Go</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Intent Modal -->
+    <div id="intent-overlay">
+      <div id="intent-sheet">
+        <div class="sheet-pill"></div>
+
+        <!-- Product identity -->
+        <div class="sheet-product">
+          <div class="sp-emoji" id="sp-emoji">📦</div>
+          <div>
+            <div class="sp-name" id="sp-name">Product Name</div>
+            <div class="sp-sub" id="sp-code">Barcode: —</div>
+            <div class="sp-inv" id="sp-inv-status"></div>
+          </div>
+        </div>
+
+        <div class="intent-label">What do you want to do?</div>
+
+        <!-- Choice buttons -->
+        <div id="intent-choices">
+          <button class="intent-btn ib-green" onclick="intentAddPantry()">
+            <div class="ib-icon g">➕</div>
+            <div class="ib-text">
+              <div class="ib-title">Add to Pantry</div>
+              <div class="ib-desc" id="intent-add-desc">Just bought it — increase stock</div>
+            </div>
+          </button>
+
+          <!-- Case size chooser — shown inline when item has a case size -->
+          <div id="case-chooser" style="display:none;margin-bottom:9px">
+            <div style="font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">How much did you buy?</div>
+            <div style="display:flex;gap:8px">
+              <button class="intent-btn ib-green" id="case-full-btn" onclick="intentAddCase()" style="flex:1;margin-bottom:0;padding:12px">
+                <div class="ib-icon g" style="width:32px;height:32px;font-size:1rem">📦</div>
+                <div class="ib-text">
+                  <div class="ib-title" id="case-full-label">Full Case</div>
+                  <div class="ib-desc">Adds full case quantity</div>
+                </div>
+              </button>
+              <button class="intent-btn ib-green" onclick="intentAddSingle()" style="flex:1;margin-bottom:0;padding:12px">
+                <div class="ib-icon g" style="width:32px;height:32px;font-size:1rem">1️⃣</div>
+                <div class="ib-text">
+                  <div class="ib-title">Single Unit</div>
+                  <div class="ib-desc">Adds just 1</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <button class="intent-btn ib-red" onclick="intentUseUp()">
+            <div class="ib-icon r">📭</div>
+            <div class="ib-text">
+              <div class="ib-title">Mark as Used / Empty</div>
+              <div class="ib-desc">Decrease stock — auto-adds to grocery if zero</div>
+            </div>
+          </button>
+
+          <button class="intent-btn ib-amber" onclick="intentReorder()">
+            <div class="ib-icon a">🛒</div>
+            <div class="ib-text">
+              <div class="ib-title">Add to Grocery List</div>
+              <div class="ib-desc">Need to reorder — don't change pantry qty</div>
+            </div>
+          </button>
+
+          <button class="intent-btn ib-blue" id="btn-new-item" onclick="intentShowDetails()">
+            <div class="ib-icon b">🆕</div>
+            <div class="ib-text">
+              <div class="ib-title">New Item — Set Details</div>
+              <div class="ib-desc">First time adding — choose category & qty</div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Add details sub-panel -->
+        <div id="add-details">
+          <div class="ad-title">Item Details</div>
+          <div class="field-row" style="margin-bottom:10px">
+            <div class="field"><label>Qty</label><input type="number" id="a-qty" value="1" min="1"></div>
+            <div class="field"><label>Category</label>
+              <select id="a-cat">
+                <option value="pantry">🥫 Pantry</option>
+                <option value="produce">🥦 Produce</option>
+                <option value="dairy">🧀 Dairy</option>
+                <option value="frozen">🧊 Frozen</option>
+                <option value="beverages">🥤 Beverages</option>
+                <option value="snacks">🍪 Snacks</option>
+                <option value="meat">🥩 Meat</option>
+                <option value="bakery">🍞 Bakery</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row" style="margin-bottom:12px">
+            <div class="field"><label>Expires</label><input type="text" id="a-exp" placeholder="e.g. Dec 2025"></div>
+            <div class="field"><label>Low stock ≤</label><input type="number" id="a-low" value="1" min="0"></div>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>Reorder From</label>
+            <select id="a-src">
+              <option value="store">🛒 Grocery Store / Instacart</option>
+              <option value="amazon">📦 Amazon Prime</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>Sold in a case / pack?</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <select id="a-case" style="flex:1" onchange="toggleCaseSize()">
+                <option value="0">No — single units</option>
+                <option value="custom">Yes — specify case size</option>
+              </select>
+              <input type="number" id="a-case-size" min="2" max="500" placeholder="e.g. 12"
+                style="width:90px;display:none" title="Units per case">
+            </div>
+            <div id="a-case-hint" style="font-size:0.72rem;color:var(--muted);margin-top:5px;display:none">
+              When you scan this as "Add to Pantry", it will ask if you're adding a full case or a single unit.
+            </div>
+          </div>
+          <button class="btn btn-orange" style="width:100%" onclick="addToInv()">✓ Confirm Add to Pantry</button>
+        </div>
+
+        <button class="sheet-cancel" onclick="closeRes()">Cancel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Produce (PLU)</div>
+      <p style="font-size:0.8rem;color:var(--muted);margin-bottom:12px">4–5 digit code from produce sticker</p>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="plu-in" placeholder="e.g. 4011 for Bananas" inputmode="numeric" onkeydown="if(event.key==='Enter')lookupPLU()">
+        <button class="btn btn-green" onclick="lookupPLU()">Find</button>
+      </div>
+      <div id="plu-result">
+        <div id="plu-name" style="font-weight:600;margin-bottom:10px"></div>
+        <div class="btn-row" style="margin-top:0">
+          <button class="btn btn-orange" onclick="pluToInv()">✓ Pantry</button>
+          <button class="btn btn-amber" onclick="pluToGroc()">🛒 List</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY -->
+  <div class="page" id="p-inv">
+    <div class="search-row">
+      <input type="text" id="s-inv" placeholder="Search..." oninput="renderInv()">
+      <select onchange="catFilter=this.value;renderInv()">
+        <option value="">All</option>
+        <option value="pantry">Pantry</option>
+        <option value="produce">Produce</option>
+        <option value="dairy">Dairy</option>
+        <option value="frozen">Frozen</option>
+        <option value="beverages">Beverages</option>
+        <option value="snacks">Snacks</option>
+        <option value="meat">Meat</option>
+        <option value="bakery">Bakery</option>
+      </select>
+    </div>
+    <div id="low-banner" class="low-banner"></div>
+    <div id="inv-list"></div>
+  </div>
+
+  <!-- GROCERY -->
+  <div class="page" id="p-groc">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1;background:linear-gradient(135deg,#1A2535,#0D1520);border-radius:12px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:1.2rem">📦</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:0.82rem">Amazon Prime</div>
+            <div style="font-size:0.68rem;opacity:0.6">Order 2–4 days ahead</div>
+          </div>
+          <button class="btn btn-ghost" onclick="copySection('amazon')" style="font-size:0.72rem;padding:6px 9px">Copy</button>
+        </div>
+        <a id="shop-all-amazon" href="#" target="_blank" rel="noopener" class="shop-btn shop-amazon" style="width:100%;justify-content:center;display:flex" onclick="return openAmazonAll()">
+          🛍 Shop All on Amazon
+        </a>
+      </div>
+      <div style="flex:1;background:linear-gradient(135deg,#003D1F,#001F0F);border-radius:12px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:1.2rem">🛒</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:0.82rem">Instacart</div>
+            <div style="font-size:0.68rem;opacity:0.6">Same-day delivery</div>
+          </div>
+          <button class="btn btn-ghost" onclick="copySection('store')" style="font-size:0.72rem;padding:6px 9px">Copy</button>
+        </div>
+        <a href="https://www.instacart.com" target="_blank" rel="noopener" class="shop-btn shop-instacart" style="width:100%;justify-content:center;display:flex">
+          🥦 Open Instacart
+        </a>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="man-groc" placeholder="Add item..." onkeydown="if(event.key==='Enter')addManGroc()">
+      <button class="btn btn-orange" onclick="addManGroc()">Add</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn btn-ghost" onclick="clearChecked()" style="font-size:0.78rem;padding:8px 12px;flex:1">Clear Checked</button>
+      <button class="btn btn-ghost" onclick="clearGroc()" style="font-size:0.78rem;padding:8px 12px;flex:1">Clear All</button>
+    </div>
+
+    <!-- Amazon section -->
+    <div id="amazon-section" style="display:none">
+      <div class="groc-section-hdr">
+        <span style="font-size:1.1rem">📦</span>
+        <span class="gsh-label">Amazon Prime</span>
+        <button class="btn btn-ghost gsh-copy" onclick="copySection('amazon')">Copy List</button>
+      </div>
+      <div id="amazon-list"></div>
+    </div>
+
+    <!-- Store section -->
+    <div id="store-section" style="display:none">
+      <div class="groc-section-hdr">
+        <span style="font-size:1.1rem">🛒</span>
+        <span class="gsh-label">Grocery Store / Instacart</span>
+        <button class="btn btn-ghost gsh-copy" onclick="copySection('store')">Copy List</button>
+      </div>
+      <div id="store-list"></div>
+    </div>
+
+    <!-- Unsorted / manual items -->
+    <div id="groc-list"></div>
+
+    <div id="low-auto" style="display:none">
+      <div class="sect-label">📉 Low Stock — Suggested Restocks</div>
+      <div id="low-auto-list"></div>
+    </div>
+  </div>
+
+  <!-- PRODUCE -->
+  <div class="page" id="p-prod">
+    <div class="card">
+      <div class="card-title">Add Custom PLU Code</div>
+      <div class="field-row" style="margin-bottom:10px">
+        <div class="field"><label>PLU Code</label><input type="text" id="np-code" placeholder="4011" inputmode="numeric"></div>
+        <div class="field"><label>Name</label><input type="text" id="np-name" placeholder="Bananas"></div>
+        <div class="field" style="max-width:72px"><label>Emoji</label><input type="text" id="np-emoji" placeholder="🍌"></div>
+      </div>
+      <button class="btn btn-orange" onclick="addPLU()">+ Add Code</button>
+    </div>
+    <div class="sect-label">All Produce Codes</div>
+    <div id="prod-list"></div>
+  </div>
+
+  <!-- HELP -->
+  <div class="page" id="p-help">
+
+    <div class="help-hero">
+      <div class="help-hero-icon">🥫</div>
+      <div class="help-hero-title">How to Use Pantry Tracker</div>
+      <div class="help-hero-sub">The two-scan system for effortless kitchen inventory</div>
+    </div>
+
+    <!-- THE WORKFLOW -->
+    <div class="help-section-label">The Core Workflow</div>
+
+    <div class="help-step-card">
+      <div class="hsc-number">1</div>
+      <div class="hsc-body">
+        <div class="hsc-title">Scan In — When You Get Home</div>
+        <div class="hsc-text">After shopping, scan each item before putting it away. Tap <strong>Add to Pantry</strong> on the action sheet. Your stock count goes up automatically.</div>
+        <div class="hsc-tip">💡 Batch it — unpack everything first, then scan all at once before putting things away.</div>
+      </div>
+    </div>
+
+    <div class="help-step-card">
+      <div class="hsc-number">2</div>
+      <div class="hsc-body">
+        <div class="hsc-title">Scan Out — Before You Toss the Container</div>
+        <div class="hsc-text">When a package is empty and about to hit the trash or recycling, scan it one last time. Tap <strong>Mark as Used / Empty</strong>. Stock goes down — and if it crosses your reorder threshold, it auto-adds to your list.</div>
+        <div class="hsc-tip">💡 The recycling bin is your trigger. Before anything goes in — scan it.</div>
+      </div>
+    </div>
+
+    <div class="help-step-card">
+      <div class="hsc-number">3</div>
+      <div class="hsc-body">
+        <div class="hsc-title">Order — From the Grocery List Tab</div>
+        <div class="hsc-text">Your list automatically splits into <strong>📦 Amazon Prime</strong> and <strong>🛒 Store / Instacart</strong> sections. Hit <em>Copy</em> on either section and paste straight into the app you're ordering from.</div>
+        <div class="hsc-tip">💡 For Amazon items, set your reorder threshold high enough to order 2–4 days before you run out.</div>
+      </div>
+    </div>
+
+    <!-- SCAN ACTIONS -->
+    <div class="help-section-label">What Each Scan Action Does</div>
+
+    <div class="help-action-card hac-green">
+      <div class="hac-icon">➕</div>
+      <div>
+        <div class="hac-title">Add to Pantry</div>
+        <div class="hac-desc">Just bought it. Increases your stock count by 1. For first-time items, lets you set category, expiration, and reorder threshold.</div>
+      </div>
+    </div>
+
+    <div class="help-action-card hac-red">
+      <div class="hac-icon">📭</div>
+      <div>
+        <div class="hac-title">Mark as Used / Empty</div>
+        <div class="hac-desc">Decreases stock by 1. If qty hits your reorder threshold, it automatically adds to the right shopping list. If it hits zero, it always adds to your list.</div>
+      </div>
+    </div>
+
+    <div class="help-action-card hac-amber">
+      <div class="hac-icon">🛒</div>
+      <div>
+        <div class="hac-title">Add to Grocery List</div>
+        <div class="hac-desc">Adds directly to your shopping list without changing your pantry count. Use when you notice you're low but haven't used the item yet.</div>
+      </div>
+    </div>
+
+    <div class="help-action-card hac-blue">
+      <div class="hac-icon">🆕</div>
+      <div>
+        <div class="hac-title">New Item — Set Details</div>
+        <div class="hac-desc">Only appears for items not yet in your pantry. Lets you configure category, expiration date, reorder threshold, and whether to order from Amazon or the store.</div>
+      </div>
+    </div>
+
+    <!-- REORDER THRESHOLDS -->
+    <div class="help-section-label">Setting Reorder Thresholds</div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:0.88rem;line-height:1.7;color:var(--cream)">
+        <p style="margin-bottom:10px">The <strong>reorder threshold</strong> is the quantity at which the app automatically adds an item to your shopping list — before you run out.</p>
+        <p style="margin-bottom:10px">Set it based on how long it takes to restock:</p>
+        <div class="help-threshold-row">
+          <span class="help-threshold-badge" style="background:#1A2535;color:#70AAEE">📦 Amazon</span>
+          <span>Set to <strong>3–5</strong> — gives you time to order and receive delivery</span>
+        </div>
+        <div class="help-threshold-row">
+          <span class="help-threshold-badge" style="background:#1A2A1A;color:#80CC80">🛒 Store</span>
+          <span>Set to <strong>1–2</strong> — you can grab it on your next trip</span>
+        </div>
+        <div class="help-threshold-row">
+          <span class="help-threshold-badge" style="background:#3D1010;color:#EE6060">⚡ Critical</span>
+          <span>Set to <strong>0</strong> to only alert when completely empty</span>
+        </div>
+        <p style="margin-top:10px;font-size:0.8rem;color:var(--muted)">The colored bar on each pantry item shows how close you are to your threshold — green is fine, amber is approaching, red means reorder now.</p>
+      </div>
+    </div>
+
+    <!-- PRODUCE -->
+    <div class="help-section-label">Tracking Produce</div>
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:0.88rem;line-height:1.7;color:var(--cream)">
+        <p style="margin-bottom:8px">Produce doesn't have barcodes, but it does have <strong>PLU codes</strong> — the 4–5 digit number on the little sticker.</p>
+        <p style="margin-bottom:8px">Use the <strong>Quick Produce</strong> field on the Scan tab, or tap the Produce tab to browse 50+ pre-loaded codes. You can also add your own.</p>
+        <p style="font-size:0.8rem;color:var(--muted)">For produce you use frequently, use the <strong>− button</strong> manually on the Pantry tab as you cook, rather than scanning each time.</p>
+      </div>
+    </div>
+
+    <!-- TIPS -->
+    <div class="help-section-label">Tips for Sticking With It</div>
+
+    <div class="help-tip-row">🔵 <span><strong>Keep the app on your home screen</strong> so it's one tap away — not buried in a folder.</span></div>
+    <div class="help-tip-row">🔵 <span><strong>A Bluetooth scanner</strong> ($30–50) sits on the counter and types barcodes automatically — no camera pointing needed.</span></div>
+    <div class="help-tip-row">🔵 <span><strong>Scan in batches.</strong> Unpacking groceries and tossing trash are natural moments — do all the scanning at once.</span></div>
+    <div class="help-tip-row">🔵 <span><strong>Adjust thresholds</strong> over the first few weeks until the auto-alerts feel right for your rhythm.</span></div>
+    <div class="help-tip-row">🔵 <span><strong>Produce is the exception.</strong> Don't stress scanning every banana — just use the − button when cooking.</span></div>
+
+    <!-- Reset / Restart -->
+    <div class="help-section-label">Reset & Setup</div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="font-size:0.88rem;color:var(--cream);line-height:1.6;margin-bottom:14px">
+        <strong>Moving, emptied your fridge, or starting fresh?</strong><br>
+        <span style="color:var(--muted)">Restart the setup wizard to do a fresh scan session. You can choose to clear your existing inventory or keep it and add more items on top.</span>
+      </div>
+      <button class="btn btn-amber" style="width:100%;margin-bottom:8px" onclick="restartOnboarding(false)">🔄 Scan Again — Keep Existing Items</button>
+      <button class="btn btn-red" style="width:100%" onclick="restartOnboarding(true)">🗑 Fresh Start — Clear Everything & Re-scan</button>
+    </div>
+
+    <div style="height:20px"></div>
+  </div>
+
+</div>
+
+<!-- BOTTOM NAV -->
+<nav>
+  <button class="nav-btn active" onclick="goTab('scan',this)"><span class="nav-icon">📷</span>Scan</button>
+  <button class="nav-btn" onclick="goTab('inv',this)"><span class="nav-icon">📦</span>Pantry</button>
+  <button class="nav-btn" onclick="goTab('groc',this)"><span class="nav-icon">🛒</span>Grocery</button>
+  <button class="nav-btn" onclick="goTab('prod',this)"><span class="nav-icon">🥦</span>Produce</button>
+  <button class="nav-btn" onclick="goTab('help',this)"><span class="nav-icon">❓</span>Help</button>
+</nav>
+
+</div>
+<div id="toast"></div>
+
+<script>
+// ── STATE ────────────────────────────────────────
+let inv = JSON.parse(localStorage.getItem('pti') || '[]');
+let groc = JSON.parse(localStorage.getItem('ptg') || '[]');
+let myPLUs = JSON.parse(localStorage.getItem('ptp') || '{}');
+let catFilter = '';
+let pending = null;
+let pendPLU = null;
+let scanActive = false;
+let codeReader = null;
+
+// ── PLU DB ───────────────────────────────────────
+const PLUSDB = {
+  '3000':{ name:'Grapes (Red)', emoji:'🍇' },
+  '3024':{ name:'Grapes (Green)', emoji:'🍇' },
+  '3082':{ name:'Strawberries', emoji:'🍓' },
+  '3283':{ name:'Cherries', emoji:'🍒' },
+  '3428':{ name:'Mango', emoji:'🥭' },
+  '4011':{ name:'Bananas', emoji:'🍌' },
+  '4016':{ name:'Apples (Gala)', emoji:'🍎' },
+  '4021':{ name:'Apples (Granny Smith)', emoji:'🍏' },
+  '4022':{ name:'Pear', emoji:'🍐' },
+  '4043':{ name:'Asparagus', emoji:'🌿' },
+  '4046':{ name:'Avocado (Large)', emoji:'🥑' },
+  '4053':{ name:'Avocado (Hass)', emoji:'🥑' },
+  '4062':{ name:'Bell Pepper (Red)', emoji:'🫑' },
+  '4065':{ name:'Broccoli', emoji:'🥦' },
+  '4069':{ name:'Cabbage (Green)', emoji:'🥬' },
+  '4073':{ name:'Cantaloupe', emoji:'🍈' },
+  '4079':{ name:'Carrots', emoji:'🥕' },
+  '4080':{ name:'Celery', emoji:'🌿' },
+  '4087':{ name:'Grapefruit (Pink)', emoji:'🍊' },
+  '4129':{ name:'Lemon', emoji:'🍋' },
+  '4133':{ name:'Lettuce (Iceberg)', emoji:'🥬' },
+  '4148':{ name:'Mushrooms (White)', emoji:'🍄' },
+  '4166':{ name:'Lime', emoji:'🍋' },
+  '4169':{ name:'Onion (Yellow)', emoji:'🧅' },
+  '4196':{ name:'Potato (Russet)', emoji:'🥔' },
+  '4197':{ name:'Potato (Red)', emoji:'🥔' },
+  '4225':{ name:'Tomatoes (Beefsteak)', emoji:'🍅' },
+  '4226':{ name:'Tomatoes (Roma)', emoji:'🍅' },
+  '4227':{ name:'Watermelon', emoji:'🍉' },
+  '4230':{ name:'Zucchini', emoji:'🫑' },
+  '4236':{ name:'Nectarine', emoji:'🍑' },
+  '4252':{ name:'Apples (Fuji)', emoji:'🍎' },
+  '4294':{ name:'Plum', emoji:'🍑' },
+  '4319':{ name:'Kiwi', emoji:'🥝' },
+  '4350':{ name:'Spinach', emoji:'🥬' },
+  '4403':{ name:'Peach', emoji:'🍑' },
+  '4562':{ name:'Cucumber', emoji:'🥒' },
+  '4688':{ name:'Bell Pepper (Green)', emoji:'🫑' },
+  '4724':{ name:'Garlic', emoji:'🧄' },
+  '4959':{ name:'Blueberries', emoji:'🫐' },
+};
+
+const CATEMOJI = { pantry:'🥫', produce:'🥦', dairy:'🧀', frozen:'🧊', beverages:'🥤', snacks:'🍪', meat:'🥩', bakery:'🍞' };
+
+// ── SAVE ─────────────────────────────────────────
+function save() {
+  localStorage.setItem('pti', JSON.stringify(inv));
+  localStorage.setItem('ptg', JSON.stringify(groc));
+  localStorage.setItem('ptp', JSON.stringify(myPLUs));
+  document.getElementById('hdr-count').textContent = inv.length + ' item' + (inv.length !== 1 ? 's' : '');
+}
+
+// ── TABS ─────────────────────────────────────────
+function goTab(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('p-' + id).classList.add('active');
+  btn.classList.add('active');
+  stopScan();
+  if (id === 'inv') renderInv();
+  if (id === 'groc') renderGroc();
+  if (id === 'prod') renderProd();
+}
+
+// ── SCANNER (ZXing — iOS Safari compatible) ──────
+async function startScan() {
+  if (scanActive) return;
+  const wrap = document.getElementById('video-wrap');
+  const video = document.getElementById('video');
+  const status = document.getElementById('scan-status');
+
+  status.textContent = 'Requesting camera…';
+
+  try {
+    // Use ZXing's BrowserMultiFormatReader if available, else use native
+    if (typeof ZXing !== 'undefined') {
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      const devices = await codeReader.listVideoInputDevices();
+      const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+      const deviceId = backCam ? backCam.deviceId : undefined;
+
+      wrap.style.display = 'block';
+      scanActive = true;
+      status.textContent = '🔴 Scanning — point at barcode';
+
+      await codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
+        if (result) {
+          const code = result.getText();
+          stopScan();
+          document.getElementById('man-bc').value = code;
+          doLookup(code);
+        }
+      });
+    } else {
+      // Fallback: use getUserMedia + native BarcodeDetector (Chrome/Safari 17+)
+      await nativeScan(video, wrap, status);
+    }
+  } catch (e) {
+    status.textContent = '⚠️ Camera error — try manual entry';
+    toast('Camera: ' + (e.message || 'permission denied'), 'a');
+    wrap.style.display = 'none';
+    scanActive = false;
+  }
+}
+
+async function nativeScan(video, wrap, status) {
+  if (!('BarcodeDetector' in window)) {
+    status.textContent = '⚠️ Auto-scan not supported — use manual entry';
+    return;
+  }
+  const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  video.srcObject = stream;
+  await video.play();
+  wrap.style.display = 'block';
+  scanActive = true;
+  status.textContent = '🔴 Scanning — point at barcode';
+
+  const detect = async () => {
+    if (!scanActive) return;
+    try {
+      const barcodes = await detector.detect(video);
+      if (barcodes.length > 0) {
+        const code = barcodes[0].rawValue;
+        stopScan();
+        document.getElementById('man-bc').value = code;
+        doLookup(code);
+        return;
+      }
+    } catch (e) {}
+    requestAnimationFrame(detect);
+  };
+  requestAnimationFrame(detect);
+}
+
+function stopScan() {
+  scanActive = false;
+  const wrap = document.getElementById('video-wrap');
+  const video = document.getElementById('video');
+  wrap.style.display = 'none';
+  document.getElementById('scan-status').textContent = 'Ready to scan';
+  if (codeReader) { try { codeReader.reset(); } catch(e){} codeReader = null; }
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+}
+
+// ── BARCODE LOOKUP ────────────────────────────────
+async function doLookup(code) {
+  code = code || document.getElementById('man-bc').value.trim();
+  if (!code) { toast('Enter a barcode first'); return; }
+  document.getElementById('scan-status').textContent = 'Looking up…';
+
+  let name = null;
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+    const d = await r.json();
+    if (d.status === 1) name = d.product.product_name || d.product.product_name_en || null;
+  } catch(e) {}
+
+  if (!name) name = 'Unknown Product';
+  document.getElementById('scan-status').textContent = 'Ready to scan';
+
+  const existing = inv.find(i => i.barcode === code);
+  pending = { barcode: code, name, qty: 1, cat: 'pantry', exp: '', low: 1 };
+
+  // Populate modal
+  const catEmoji = existing ? (existing.emoji || CATEMOJI[existing.cat] || '📦') : '📦';
+  document.getElementById('sp-emoji').textContent = catEmoji;
+  document.getElementById('sp-name').textContent = name;
+  document.getElementById('sp-code').textContent = 'Barcode: ' + code;
+
+  const invStatus = document.getElementById('sp-inv-status');
+  if (existing) {
+    const caseLabel = existing.caseSize > 0 ? ` · case of ${existing.caseSize}` : '';
+    invStatus.textContent = `In pantry: ${existing.qty} in stock${caseLabel}`;
+    document.getElementById('btn-new-item').style.display = 'none';
+  } else {
+    invStatus.textContent = 'Not in pantry yet';
+    document.getElementById('btn-new-item').style.display = 'flex';
+  }
+
+  // Show/hide case chooser on the Add button
+  const caseChooser = document.getElementById('case-chooser');
+  const intentAddDesc = document.getElementById('intent-add-desc');
+  if (existing && existing.caseSize > 0) {
+    caseChooser.style.display = 'block';
+    intentAddDesc.textContent = `Tap below — case of ${existing.caseSize} or single unit`;
+    document.getElementById('case-full-label').textContent = `Full Case (×${existing.caseSize})`;
+  } else {
+    caseChooser.style.display = 'none';
+    intentAddDesc.textContent = 'Just bought it — increase stock';
+  }
+
+  // Reset details panel
+  document.getElementById('add-details').classList.remove('show');
+  document.getElementById('intent-choices').style.display = 'block';
+
+  document.getElementById('intent-overlay').classList.add('show');
+  toast('Found: ' + name.slice(0, 28), 'g');
+}
+
+// ── INTENT ACTIONS ────────────────────────────────
+function intentAddPantry() {
+  if (!pending) return;
+  const ei = inv.findIndex(i => i.barcode === pending.barcode);
+  if (ei >= 0) {
+    const it = inv[ei];
+    // If item has a case size, the chooser buttons handle it — this button is hidden
+    // But if no case size, just add 1
+    if (!it.caseSize || it.caseSize === 0) {
+      it.qty++;
+      toast(`✓ Added 1 — now ${it.qty}`, 'g');
+      save(); closeRes();
+    }
+    // (if caseSize > 0, the case-chooser div is shown instead — do nothing here)
+  } else {
+    intentShowDetails();
+  }
+}
+
+function intentAddCase() {
+  if (!pending) return;
+  const ei = inv.findIndex(i => i.barcode === pending.barcode);
+  if (ei < 0) return;
+  const it = inv[ei];
+  const cs = it.caseSize || 1;
+  it.qty += cs;
+  toast(`✓ Added case of ${cs} — now ${it.qty}`, 'g');
+  save(); closeRes();
+}
+
+function intentAddSingle() {
+  if (!pending) return;
+  const ei = inv.findIndex(i => i.barcode === pending.barcode);
+  if (ei < 0) return;
+  inv[ei].qty++;
+  toast(`✓ Added 1 — now ${inv[ei].qty}`, 'g');
+  save(); closeRes();
+}
+
+function intentUseUp() {
+  if (!pending) return;
+  const ei = inv.findIndex(i => i.barcode === pending.barcode);
+  if (ei < 0) { toast('Item not in pantry yet — add it first', 'a'); closeRes(); return; }
+  const it = inv[ei];
+  const prevQty = it.qty;
+  it.qty = Math.max(0, it.qty - 1);
+  checkReorderThreshold(it, prevQty);
+  if (it.qty > 0) toast('➖ ' + it.name.slice(0,22) + ' — ' + it.qty + ' left');
+  save(); closeRes();
+}
+
+function intentReorder() {
+  if (!pending) return;
+  pushGroc(pending.name, 1);
+  closeRes();
+}
+
+function intentShowDetails() {
+  document.getElementById('intent-choices').style.display = 'none';
+  document.getElementById('add-details').classList.add('show');
+  // Pre-fill case size if item already has one
+  const existing = pending ? inv.find(i => i.barcode === pending.barcode) : null;
+  const caseEl = document.getElementById('a-case');
+  const caseSizeEl = document.getElementById('a-case-size');
+  const caseHint = document.getElementById('a-case-hint');
+  if (existing && existing.caseSize > 0) {
+    caseEl.value = 'custom';
+    caseSizeEl.value = existing.caseSize;
+    caseSizeEl.style.display = 'block';
+    caseHint.style.display = 'block';
+  } else {
+    caseEl.value = '0';
+    caseSizeEl.style.display = 'none';
+    caseHint.style.display = 'none';
+  }
+}
+
+function closeRes() {
+  document.getElementById('intent-overlay').classList.remove('show');
+  document.getElementById('man-bc').value = '';
+  pending = null;
+}
+
+function toggleCaseSize() {
+  const sel = document.getElementById('a-case');
+  const sizeInput = document.getElementById('a-case-size');
+  const hint = document.getElementById('a-case-hint');
+  const isCase = sel.value === 'custom';
+  sizeInput.style.display = isCase ? 'block' : 'none';
+  hint.style.display = isCase ? 'block' : 'none';
+  if (isCase && !sizeInput.value) sizeInput.value = '12';
+}
+
+function addToInv() {
+  if (!pending) return;
+  pending.qty = parseInt(document.getElementById('a-qty').value) || 1;
+  pending.cat = document.getElementById('a-cat').value;
+  pending.exp = document.getElementById('a-exp').value;
+  pending.low = parseInt(document.getElementById('a-low').value) || 0;
+  pending.src = document.getElementById('a-src').value;
+  // Case size
+  const caseEl = document.getElementById('a-case');
+  const caseSizeEl = document.getElementById('a-case-size');
+  pending.caseSize = (caseEl.value === 'custom') ? (parseInt(caseSizeEl.value) || 0) : 0;
+  pending.id = Date.now();
+  const ei = inv.findIndex(i => i.barcode === pending.barcode);
+  if (ei >= 0) {
+    inv[ei].qty += pending.qty;
+    inv[ei].caseSize = pending.caseSize; // update case size if changed
+    toast('Updated qty ✓', 'g');
+  } else {
+    inv.push({ ...pending });
+    toast('Added to pantry ✓', 'g');
+  }
+  save(); closeRes();
+}
+
+function addToGroc() {
+  if (!pending) return;
+  pushGroc(pending.name, 1);
+  closeRes();
+}
+
+// ── PLU ───────────────────────────────────────────
+function lookupPLU() {
+  const c = document.getElementById('plu-in').value.trim();
+  if (!c) return;
+  const all = { ...PLUSDB, ...myPLUs };
+  const item = all[c];
+  const el = document.getElementById('plu-result');
+  if (item) {
+    pendPLU = { code: c, ...item };
+    document.getElementById('plu-name').textContent = item.emoji + ' ' + item.name;
+    el.style.display = 'block';
+    toast('Found: ' + item.name, 'g');
+  } else {
+    el.style.display = 'none';
+    toast('PLU not found — add it in Produce tab', 'a');
+  }
+}
+
+function pluToInv() {
+  if (!pendPLU) return;
+  const ei = inv.findIndex(i => i.barcode === 'PLU-' + pendPLU.code);
+  if (ei >= 0) { inv[ei].qty++; toast('Updated qty ✓', 'g'); }
+  else {
+    inv.push({ id: Date.now(), barcode: 'PLU-' + pendPLU.code, name: pendPLU.name, emoji: pendPLU.emoji, qty: 1, cat: 'produce', exp: '', low: 1 });
+    toast('Added to pantry ✓', 'g');
+  }
+  save();
+  document.getElementById('plu-result').style.display = 'none';
+  document.getElementById('plu-in').value = '';
+}
+
+function pluToGroc() {
+  if (!pendPLU) return;
+  pushGroc(pendPLU.emoji + ' ' + pendPLU.name, 1);
+  document.getElementById('plu-result').style.display = 'none';
+  document.getElementById('plu-in').value = '';
+}
+
+// ── INVENTORY ─────────────────────────────────────
+function renderInv() {
+  const q = (document.getElementById('s-inv').value || '').toLowerCase();
+  let items = inv.filter(i => (!catFilter || i.cat === catFilter) && (!q || i.name.toLowerCase().includes(q)));
+  const el = document.getElementById('inv-list');
+  const lowItems = inv.filter(i => i.qty <= i.low);
+
+  const lb = document.getElementById('low-banner');
+  if (lowItems.length) {
+    lb.style.display = 'block';
+    lb.textContent = '⚠️ ' + lowItems.length + ' item' + (lowItems.length > 1 ? 's' : '') + ' running low: ' + lowItems.map(i => i.name.split(' ')[0]).join(', ');
+  } else lb.style.display = 'none';
+
+  if (!items.length) {
+    el.innerHTML = `<div class="empty"><div class="ei">📦</div><p>No items. Scan something!</p></div>`;
+    return;
+  }
+
+  el.innerHTML = items.map(it => {
+    const em = it.emoji || CATEMOJI[it.cat] || '📦';
+    const isLow = it.low > 0 && it.qty <= it.low;
+    const srcBadge = it.src === 'amazon'
+      ? `<span class="badge b-amazon">📦 Amazon</span>`
+      : it.src === 'store' ? `<span class="badge b-store">🛒 Store</span>` : '';
+    const caseBadge = it.caseSize > 0
+      ? `<span class="badge" style="background:#2A1A3D;color:#C080EE">📦×${it.caseSize}</span>` : '';
+
+    // Reorder bar — only show if threshold is set
+    let reorderBar = '';
+    if (it.low > 0) {
+      const maxDisplay = Math.max(it.low * 3, it.qty, 1);
+      const pct = Math.min(100, Math.round((it.qty / maxDisplay) * 100));
+      const fillClass = it.qty === 0 ? 'low' : (it.qty <= it.low ? 'warn' : 'ok');
+      const reorderNote = it.caseSize > 0 ? `Reorder at ${it.low} → order case of ${it.caseSize}` : `Reorder at ${it.low}`;
+      reorderBar = `<div class="reorder-bar" title="${reorderNote}"><div class="reorder-fill ${fillClass}" style="width:${pct}%"></div></div>`;
+    }
+
+    return `<div class="inv-item ${isLow ? 'low' : ''}">
+      <div class="item-emoji">${em}</div>
+      <div class="item-body">
+        <div class="item-name">${it.name}</div>
+        <div class="item-sub">
+          <span class="badge b-${it.cat}">${it.cat}</span>
+          ${srcBadge}
+          ${caseBadge}
+          ${isLow ? '<span class="badge b-low">Reorder!</span>' : ''}
+          ${it.exp ? `<span class="badge b-exp">Exp: ${it.exp}</span>` : ''}
+          ${it.low > 0 ? `<span style="font-size:0.68rem;color:var(--muted)">reorder at ${it.low}</span>` : ''}
+        </div>
+        ${reorderBar}
+      </div>
+      <div class="qty-ctrl">
+        <button class="qbtn" onclick="adjQty(${it.id},-1)">−</button>
+        <span class="qnum">${it.qty}</span>
+        <button class="qbtn" onclick="adjQty(${it.id},1)">+</button>
+      </div>
+      <div class="ibtns">
+        <button class="ibtn" title="Add to list" onclick="grocFromInv(${it.id})">🛒</button>
+        <button class="ibtn" title="Delete" onclick="delItem(${it.id})" style="color:var(--red)">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function adjQty(id, d) {
+  const it = inv.find(i => i.id === id);
+  if (!it) return;
+  const prevQty = it.qty;
+  it.qty = Math.max(0, it.qty + d);
+  checkReorderThreshold(it, prevQty);
+  save(); renderInv();
+}
+
+// Central threshold check — called any time qty changes
+function checkReorderThreshold(it, prevQty) {
+  const threshold = it.low || 0;
+  // Determine reorder quantity — full case if set, else 1
+  const reorderQty = (it.caseSize && it.caseSize > 0) ? it.caseSize : 1;
+  const reorderLabel = reorderQty > 1 ? ` (case of ${reorderQty})` : '';
+
+  function doAdd() {
+    const alreadyListed = groc.find(g => g.name === it.name && !g.done);
+    if (!alreadyListed) {
+      pushGroc(it.name, reorderQty, it.src || 'store');
+      const srcLabel = (it.src === 'amazon') ? '📦 Amazon' : '🛒 Store list';
+      toast(`${it.name.slice(0,16)} → ${srcLabel}${reorderLabel}`, 'a');
+    }
+  }
+
+  if (threshold > 0 && it.qty <= threshold && prevQty > threshold) doAdd();
+  else if (it.qty === 0 && prevQty > 0) doAdd();
+}
+
+function delItem(id) { inv = inv.filter(i => i.id !== id); save(); renderInv(); toast('Removed'); }
+function grocFromInv(id) { const it = inv.find(i => i.id === id); if (it) pushGroc((it.emoji||'') + ' ' + it.name, 1, it.src || 'store'); }
+
+// ── GROCERY ───────────────────────────────────────
+function pushGroc(name, qty, src) {
+  src = src || 'store';
+  const ex = groc.find(g => g.name === name && !g.done);
+  if (ex) { ex.qty = (ex.qty || 1) + qty; }
+  else groc.push({ id: Date.now(), name, qty, done: false, src });
+  save(); renderGroc();
+  toast('→ ' + (src === 'amazon' ? '📦 Amazon' : '🛒 Store') + ' list: ' + name.slice(0, 20), 'g');
+}
+
+function addManGroc() {
+  const v = document.getElementById('man-groc').value.trim();
+  if (!v) return;
+  pushGroc(v, 1, 'store');
+  document.getElementById('man-groc').value = '';
+}
+
+function shopUrl(name, src) {
+  const q = encodeURIComponent(name.replace(/^[\u{1F300}-\u{1FFFF}\s]+/u, '').trim());
+  if (src === 'amazon') return `https://www.amazon.com/s?k=${q}`;
+  return `https://www.instacart.com/store/search_v3/term?query=${q}`;
+}
+
+function openAmazonAll() {
+  const items = groc.filter(g => !g.done && g.src === 'amazon');
+  if (!items.length) { toast('No Amazon items', 'a'); return false; }
+  // Open first item directly; for bulk, open search for first item and copy rest
+  const first = items[0];
+  window.open(shopUrl(first.name, 'amazon'), '_blank');
+  if (items.length > 1) {
+    const rest = items.slice(1).map(g => g.name).join(', ');
+    navigator.clipboard.writeText(rest).catch(() => {});
+    toast(`Opened ${first.name} · ${items.length - 1} more copied`, 'g');
+  }
+  return false;
+}
+
+function toggleGrocSrc(id) {
+  const g = groc.find(g => g.id === id);
+  if (!g) return;
+  g.src = (g.src === 'amazon') ? 'store' : 'amazon';
+  save(); renderGroc();
+}
+
+function renderGroc() {
+  const amazonItems = groc.filter(g => g.src === 'amazon');
+  const storeItems  = groc.filter(g => g.src !== 'amazon');
+
+  const makeItem = g => {
+    const isSrc = g.src === 'amazon';
+    const shopLabel = isSrc ? '🛍 Amazon' : '🥦 Instacart';
+    const shopClass = isSrc ? 'shop-amazon' : 'shop-instacart';
+    const toggleLabel = isSrc ? '→ Store' : '→ Amazon';
+    const qtyLabel = (g.qty && g.qty > 1) ? `×${g.qty}` : '';
+    const url = shopUrl(g.name, g.src);
+    return `<div class="groc-item ${g.done ? 'done' : ''}">
+      <div class="gchk ${g.done ? 'checked' : ''}" onclick="toggleGroc(${g.id})">${g.done ? '✓' : ''}</div>
+      <div class="gi-left">
+        <div class="gi-name-row">
+          <span class="gi-name">${g.name}</span>
+          ${qtyLabel ? `<span class="gi-meta">${qtyLabel}</span>` : ''}
+        </div>
+      </div>
+      <div class="gi-actions">
+        <a href="${url}" target="_blank" rel="noopener" class="shop-btn ${shopClass}">${shopLabel}</a>
+        <button class="shop-btn shop-src-toggle" onclick="toggleGrocSrc(${g.id})" title="Move to other list">${toggleLabel}</button>
+        <button class="ibtn" onclick="rmGroc(${g.id})" style="color:var(--muted);font-size:0.75rem">✕</button>
+      </div>
+    </div>`;
+  };
+
+  // Amazon section
+  const aEl = document.getElementById('amazon-section');
+  const aList = document.getElementById('amazon-list');
+  if (amazonItems.length) {
+    aEl.style.display = 'block';
+    aList.innerHTML = amazonItems.map(makeItem).join('');
+  } else aEl.style.display = 'none';
+
+  // Store section
+  const sEl = document.getElementById('store-section');
+  const sList = document.getElementById('store-list');
+  if (storeItems.length) {
+    sEl.style.display = 'block';
+    sList.innerHTML = storeItems.map(makeItem).join('');
+  } else sEl.style.display = 'none';
+
+  // Empty state
+  const el = document.getElementById('groc-list');
+  el.innerHTML = (!amazonItems.length && !storeItems.length)
+    ? `<div class="empty"><div class="ei">🛒</div><p>List is empty</p></div>` : '';
+
+  // Low stock suggestions
+  const lowItems = inv.filter(i => i.low > 0 && i.qty <= i.low && !groc.find(g => g.name === i.name && !g.done));
+  const autoEl = document.getElementById('low-auto');
+  const autoList = document.getElementById('low-auto-list');
+  if (lowItems.length) {
+    autoEl.style.display = 'block';
+    autoList.innerHTML = lowItems.map(i => {
+      const reorderQty = (i.caseSize && i.caseSize > 0) ? i.caseSize : 1;
+      const caseNote = i.caseSize > 0 ? ` · case of ${i.caseSize}` : '';
+      const srcLabel = i.src === 'amazon' ? '📦 Amazon' : '🛒 Store';
+      return `<div class="groc-item">
+        <div class="gi-left">
+          <div class="gi-name-row">
+            <span class="gi-name">${CATEMOJI[i.cat]||''} ${i.name}</span>
+            <span class="gi-meta">${srcLabel}${caseNote}</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="pushGroc('${i.name.replace(/'/g,"\\'")}',${reorderQty},'${i.src||'store'}')" style="font-size:0.75rem;padding:6px 10px;flex-shrink:0">+ Add</button>
+      </div>`;
+    }).join('');
+  } else autoEl.style.display = 'none';
+}
+
+function toggleGroc(id) { const g = groc.find(g => g.id === id); if (g) g.done = !g.done; save(); renderGroc(); }
+function rmGroc(id) { groc = groc.filter(g => g.id !== id); save(); renderGroc(); }
+function clearChecked() { groc = groc.filter(g => !g.done); save(); renderGroc(); }
+function clearGroc() { if (confirm('Clear grocery list?')) { groc = []; save(); renderGroc(); } }
+
+function copySection(src) {
+  const items = groc.filter(g => !g.done && g.src === src);
+  if (!items.length) { toast('Nothing in that list', 'a'); return; }
+  const txt = items.map(g => `${g.name} (x${g.qty || 1})`).join('\n');
+  navigator.clipboard.writeText(txt).then(() => {
+    toast(src === 'amazon' ? 'Amazon list copied 📦' : 'Store list copied 🛒', 'g');
+  });
+}
+
+function copyInstacart() { copySection('store'); }
+
+// ── PRODUCE ───────────────────────────────────────
+function addPLU() {
+  const c = document.getElementById('np-code').value.trim();
+  const n = document.getElementById('np-name').value.trim();
+  const e = document.getElementById('np-emoji').value.trim() || '🌿';
+  if (!c || !n) { toast('Need code and name', 'a'); return; }
+  myPLUs[c] = { name: n, emoji: e };
+  save(); renderProd();
+  document.getElementById('np-code').value = '';
+  document.getElementById('np-name').value = '';
+  document.getElementById('np-emoji').value = '';
+  toast('PLU added ✓', 'g');
+}
+
+function renderProd() {
+  const all = { ...PLUSDB, ...myPLUs };
+  document.getElementById('prod-list').innerHTML = Object.entries(all).sort((a,b) => +a[0] - +b[0]).map(([code, item]) => {
+    const isCustom = !!myPLUs[code];
+    return `<div class="plu-card">
+      <span style="font-size:1.4rem">${item.emoji}</span>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:0.88rem">${item.name}</div>
+        <span class="plu-code">PLU ${code}</span>
+      </div>
+      <button class="btn btn-orange" onclick="quickPLU('${code}')" style="font-size:0.75rem;padding:7px 12px">+ Pantry</button>
+      ${isCustom ? `<button class="ibtn" onclick="delPLU('${code}')" style="color:var(--red)">🗑</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function quickPLU(c) {
+  const all = { ...PLUSDB, ...myPLUs };
+  const it = all[c]; if (!it) return;
+  const ei = inv.findIndex(i => i.barcode === 'PLU-' + c);
+  if (ei >= 0) { inv[ei].qty++; toast('Updated qty ✓', 'g'); }
+  else { inv.push({ id: Date.now(), barcode: 'PLU-'+c, name: it.name, emoji: it.emoji, qty:1, cat:'produce', exp:'', low:1 }); toast('Added ✓', 'g'); }
+  save();
+}
+
+function delPLU(c) { delete myPLUs[c]; save(); renderProd(); }
+
+// ── TOAST ─────────────────────────────────────────
+let tTimer;
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(tTimer);
+  tTimer = setTimeout(() => el.className = 'toast', 2600);
+}
+
+// ── ONBOARDING ────────────────────────────────────
+let obScanned = [];  // items scanned during onboarding
+let obCamActive = false;
+let obCodeReader = null;
+
+function checkOnboarding() {
+  const done = localStorage.getItem('pt_onboarded');
+  if (!done) {
+    document.getElementById('onboarding').classList.remove('hidden');
+  } else {
+    document.getElementById('onboarding').classList.add('hidden');
+  }
+}
+
+function obGoScan() {
+  obShowScreen('ob-s2');
+}
+
+function obSkip() {
+  obComplete();
+}
+
+function obShowScreen(id) {
+  document.querySelectorAll('.ob-screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Onboarding camera ─────────────────────────────
+async function obStartCam() {
+  if (obCamActive) return;
+  const wrap = document.getElementById('ob-video-wrap');
+  const video = document.getElementById('ob-video');
+  const status = document.getElementById('ob-scan-status');
+  status.textContent = 'Requesting camera…';
+
+  try {
+    if (typeof ZXing !== 'undefined') {
+      obCodeReader = new ZXing.BrowserMultiFormatReader();
+      const devices = await obCodeReader.listVideoInputDevices();
+      const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+      wrap.style.display = 'block';
+      obCamActive = true;
+      status.textContent = '🔴 Scanning — point at a barcode';
+
+      await obCodeReader.decodeFromVideoDevice(
+        backCam ? backCam.deviceId : undefined,
+        'ob-video',
+        (result, err) => {
+          if (result) obHandleScan(result.getText());
+        }
+      );
+    } else if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
+      wrap.style.display = 'block';
+      obCamActive = true;
+      status.textContent = '🔴 Scanning — point at a barcode';
+      const detect = async () => {
+        if (!obCamActive) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length) { obHandleScan(codes[0].rawValue); return; }
+        } catch(e) {}
+        requestAnimationFrame(detect);
+      };
+      requestAnimationFrame(detect);
+    } else {
+      status.textContent = '⚠️ Camera not supported — use manual entry below';
+    }
+  } catch(e) {
+    status.textContent = '⚠️ Camera error — try manual entry';
+    wrap.style.display = 'none';
+    obCamActive = false;
+  }
+}
+
+function obStopCam() {
+  obCamActive = false;
+  const wrap = document.getElementById('ob-video-wrap');
+  const video = document.getElementById('ob-video');
+  wrap.style.display = 'none';
+  document.getElementById('ob-scan-status').textContent = 'Camera stopped';
+  if (obCodeReader) { try { obCodeReader.reset(); } catch(e){} obCodeReader = null; }
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+}
+
+let obLastCode = '';
+let obLookupTimer = null;
+
+async function obHandleScan(code) {
+  if (code === obLastCode) return;
+  obLastCode = code;
+  clearTimeout(obLookupTimer);
+  obLookupTimer = setTimeout(() => { obLastCode = ''; }, 2000);
+
+  document.getElementById('ob-scan-status').textContent = 'Looking up…';
+
+  let name = null;
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+    const d = await r.json();
+    if (d.status === 1) name = d.product.product_name || d.product.product_name_en || null;
+  } catch(e) {}
+  if (!name) name = 'Unknown Product';
+
+  obAddItem(code, name);
+  document.getElementById('ob-scan-status').textContent = '✓ Got it! Scan the next one';
+}
+
+async function obManualScan() {
+  const code = document.getElementById('ob-manual').value.trim();
+  if (!code) return;
+  document.getElementById('ob-manual').value = '';
+  await obHandleScan(code);
+}
+
+function obAddItem(barcode, name) {
+  // Check if already scanned in this session — increment qty
+  const existing = obScanned.find(i => i.barcode === barcode);
+  if (existing) {
+    existing.qty++;
+  } else {
+    // Also check if already in pantry
+    const inPantry = inv.find(i => i.barcode === barcode);
+    obScanned.push({
+      barcode, name,
+      qty: inPantry ? inPantry.qty + 1 : 1,
+      cat: inPantry ? inPantry.cat : 'pantry',
+      low: inPantry ? inPantry.low : 1,
+      src: inPantry ? inPantry.src : 'store'
+    });
+  }
+  obRenderList();
+  document.getElementById('ob-count').textContent = obScanned.length;
+}
+
+function obRenderList() {
+  const el = document.getElementById('ob-scanned-list');
+  if (!obScanned.length) {
+    el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem">Scanned items will appear here</div>';
+    return;
+  }
+  el.innerHTML = [...obScanned].reverse().map(it => {
+    const em = it.emoji || CATEMOJI[it.cat] || '📦';
+    return `<div class="ob-scanned-item">
+      <span class="osi-emoji">${em}</span>
+      <span class="osi-name">${it.name}</span>
+      <span class="osi-qty">×${it.qty}</span>
+    </div>`;
+  }).join('');
+}
+
+function obFinish() {
+  obStopCam();
+
+  // Commit all scanned items to inventory
+  obScanned.forEach(item => {
+    const ei = inv.findIndex(i => i.barcode === item.barcode);
+    if (ei >= 0) {
+      inv[ei].qty = item.qty;
+    } else {
+      inv.push({
+        id: Date.now() + Math.random(),
+        barcode: item.barcode,
+        name: item.name,
+        emoji: item.emoji || null,
+        qty: item.qty,
+        cat: item.cat || 'pantry',
+        exp: '',
+        low: item.low || 1,
+        src: item.src || 'store'
+      });
+    }
+  });
+
+  save();
+
+  // Show finish screen
+  document.getElementById('ob-stat').textContent =
+    `${inv.length} item${inv.length !== 1 ? 's' : ''} in your pantry`;
+  obShowScreen('ob-s3');
+}
+
+function obComplete() {
+  obStopCam();
+  localStorage.setItem('pt_onboarded', '1');
+  document.getElementById('onboarding').classList.add('hidden');
+  obScanned = [];
+  renderInv();
+}
+
+// ── Restart onboarding from Help tab ─────────────
+function restartOnboarding(clearAll) {
+  if (clearAll) {
+    if (!confirm('This will clear ALL inventory and grocery data and start fresh. Are you sure?')) return;
+    inv = [];
+    groc = [];
+    save();
+  }
+  obScanned = [];
+  obLastCode = '';
+  document.getElementById('ob-count').textContent = '0';
+  obRenderList();
+  document.getElementById('ob-scan-status').textContent = 'Ready';
+  // Reset to screen 1
+  obShowScreen('ob-s1');
+  localStorage.removeItem('pt_onboarded');
+  document.getElementById('onboarding').classList.remove('hidden');
+}
+
+// ── INIT ──────────────────────────────────────────
+save();
+renderInv();
+renderProd();
+checkOnboarding();
+
+// ── SERVICE WORKER (PWA offline support) ──────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW error:', err));
+  });
+}
+</script>
+</body>
+</html>

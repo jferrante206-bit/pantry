@@ -1,0 +1,25 @@
+{
+  "name": "Pantry Tracker",
+  "short_name": "Pantry",
+  "description": "Kitchen inventory and grocery list tracker",
+  "start_url": "/pantry/",
+  "scope": "/pantry/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1C1008",
+  "theme_color": "#1C1008",
+  "icons": [
+    { "src": "icon-57.png",  "sizes": "57x57",   "type": "image/png" },
+    { "src": "icon-60.png",  "sizes": "60x60",   "type": "image/png" },
+    { "src": "icon-72.png",  "sizes": "72x72",   "type": "image/png" },
+    { "src": "icon-76.png",  "sizes": "76x76",   "type": "image/png" },
+    { "src": "icon-114.png", "sizes": "114x114", "type": "image/png" },
+    { "src": "icon-120.png", "sizes": "120x120", "type": "image/png" },
+    { "src": "icon-144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "icon-152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "icon-167.png", "sizes": "167x167", "type": "image/png" },
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
