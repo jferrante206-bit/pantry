@@ -1049,7 +1049,7 @@ select option { background: var(--surface); }
     <div class="ob-welcome">
       <div class="ob-icon">🥫</div>
       <div class="ob-title">Welcome to<br>Pantry Tracker</div>
-      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.0.0 — Initial Release</div>
+      <div style="font-family:'Source Code Pro',monospace;font-size:0.68rem;color:var(--muted);margin-bottom:16px">v1.1.0 — iOS Camera Fix</div>
       <div class="ob-sub">Let's set up your kitchen. We'll do a quick scan of everything in your pantry and fridge to build your baseline inventory.</div>
 
       <div class="ob-steps">
@@ -1136,7 +1136,7 @@ select option { background: var(--surface); }
 <header>
   <div>
     <h1>🥫 Pantry</h1>
-    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.0.0 — Initial Release</div>
+    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.1.0 — iOS Camera Fix</div>
   </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
     <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
@@ -1557,8 +1557,20 @@ select option { background: var(--surface); }
 
         <div style="display:flex;gap:12px;align-items:flex-start">
           <div style="flex-shrink:0;text-align:center">
-            <div style="font-family:'Source Code Pro',monospace;font-size:0.72rem;color:var(--orange);font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 7px">v1.0.0</div>
+            <div style="font-family:'Source Code Pro',monospace;font-size:0.72rem;color:var(--orange);font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 7px">v1.1.0</div>
             <div style="font-size:0.62rem;color:var(--muted);margin-top:3px">Current</div>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:0.85rem;margin-bottom:4px">iOS Camera Fix</div>
+            <div style="font-size:0.78rem;color:var(--muted);line-height:1.6">
+              Switched scanner to use iOS 17+ native BarcodeDetector API first — fixes camera not working on iPhone. ZXing kept as fallback. Improved camera permission error messages.
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:14px;display:flex;gap:12px;align-items:flex-start">
+          <div style="flex-shrink:0;text-align:center">
+            <div style="font-family:'Source Code Pro',monospace;font-size:0.72rem;color:var(--muted);font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 7px">v1.0.0</div>
           </div>
           <div>
             <div style="font-weight:700;font-size:0.85rem;margin-bottom:4px">Initial Release</div>
@@ -1807,54 +1819,47 @@ function goTab(id, btn) {
   if (id === 'prod') renderProd();
 }
 
-// ── SCANNER (ZXing — iOS Safari compatible) ──────
+// ── SCANNER ───────────────────────────────────────
 async function startScan() {
   if (scanActive) return;
   const wrap = document.getElementById('video-wrap');
   const video = document.getElementById('video');
   const status = document.getElementById('scan-status');
-
   status.textContent = 'Requesting camera…';
 
   try {
-    // Use ZXing's BrowserMultiFormatReader if available, else use native
-    if (typeof ZXing !== 'undefined') {
-      codeReader = new ZXing.BrowserMultiFormatReader();
-      const devices = await codeReader.listVideoInputDevices();
-      const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
-      const deviceId = backCam ? backCam.deviceId : undefined;
-
+    // iOS Safari 17+ has native BarcodeDetector — use it first, it's faster and more reliable
+    if ('BarcodeDetector' in window) {
+      await nativeScan(video, wrap, status);
+    } else if (typeof ZXing !== 'undefined') {
+      await zxingScan(video, wrap, status);
+    } else {
+      // Last resort — try getUserMedia directly and prompt manual entry
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
       wrap.style.display = 'block';
       scanActive = true;
-      status.textContent = '🔴 Scanning — point at barcode';
-
-      await codeReader.decodeFromVideoDevice(deviceId, 'video', (result, err) => {
-        if (result) {
-          const code = result.getText();
-          stopScan();
-          document.getElementById('man-bc').value = code;
-          doLookup(code);
-        }
-      });
-    } else {
-      // Fallback: use getUserMedia + native BarcodeDetector (Chrome/Safari 17+)
-      await nativeScan(video, wrap, status);
+      status.textContent = '⚠️ Auto-detect unavailable — type barcode manually below';
     }
   } catch (e) {
-    status.textContent = '⚠️ Camera error — try manual entry';
-    toast('Camera: ' + (e.message || 'permission denied'), 'a');
+    const msg = e.name === 'NotAllowedError'
+      ? '⚠️ Camera permission denied — check Settings → Safari → Camera'
+      : '⚠️ Camera error — try manual entry below';
+    status.textContent = msg;
+    toast(msg, 'a');
     wrap.style.display = 'none';
     scanActive = false;
   }
 }
 
 async function nativeScan(video, wrap, status) {
-  if (!('BarcodeDetector' in window)) {
-    status.textContent = '⚠️ Auto-scan not supported — use manual entry';
-    return;
-  }
-  const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] });
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  const detector = new BarcodeDetector({
+    formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'qr_code']
+  });
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+  });
   video.srcObject = stream;
   await video.play();
   wrap.style.display = 'block';
@@ -1876,6 +1881,23 @@ async function nativeScan(video, wrap, status) {
     requestAnimationFrame(detect);
   };
   requestAnimationFrame(detect);
+}
+
+async function zxingScan(video, wrap, status) {
+  codeReader = new ZXing.BrowserMultiFormatReader();
+  const devices = await codeReader.listVideoInputDevices();
+  const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+  wrap.style.display = 'block';
+  scanActive = true;
+  status.textContent = '🔴 Scanning — point at barcode';
+  await codeReader.decodeFromVideoDevice(backCam ? backCam.deviceId : undefined, 'video', (result, err) => {
+    if (result) {
+      const code = result.getText();
+      stopScan();
+      document.getElementById('man-bc').value = code;
+      doLookup(code);
+    }
+  });
 }
 
 function stopScan() {
@@ -2418,43 +2440,48 @@ async function obStartCam() {
   status.textContent = 'Requesting camera…';
 
   try {
-    if (typeof ZXing !== 'undefined') {
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({
+        formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'code_93', 'itf', 'qr_code']
+      });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      wrap.style.display = 'block';
+      obCamActive = true;
+      status.textContent = '🔴 Scanning — point at a barcode';
+
+      const detect = async () => {
+        if (!obCamActive) return;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length) { obHandleScan(codes[0].rawValue); }
+        } catch(e) {}
+        requestAnimationFrame(detect);
+      };
+      requestAnimationFrame(detect);
+
+    } else if (typeof ZXing !== 'undefined') {
       obCodeReader = new ZXing.BrowserMultiFormatReader();
       const devices = await obCodeReader.listVideoInputDevices();
       const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
       wrap.style.display = 'block';
       obCamActive = true;
       status.textContent = '🔴 Scanning — point at a barcode';
-
       await obCodeReader.decodeFromVideoDevice(
-        backCam ? backCam.deviceId : undefined,
-        'ob-video',
-        (result, err) => {
-          if (result) obHandleScan(result.getText());
-        }
+        backCam ? backCam.deviceId : undefined, 'ob-video',
+        (result) => { if (result) obHandleScan(result.getText()); }
       );
-    } else if ('BarcodeDetector' in window) {
-      const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-      await video.play();
-      wrap.style.display = 'block';
-      obCamActive = true;
-      status.textContent = '🔴 Scanning — point at a barcode';
-      const detect = async () => {
-        if (!obCamActive) return;
-        try {
-          const codes = await detector.detect(video);
-          if (codes.length) { obHandleScan(codes[0].rawValue); return; }
-        } catch(e) {}
-        requestAnimationFrame(detect);
-      };
-      requestAnimationFrame(detect);
     } else {
       status.textContent = '⚠️ Camera not supported — use manual entry below';
     }
   } catch(e) {
-    status.textContent = '⚠️ Camera error — try manual entry';
+    const msg = e.name === 'NotAllowedError'
+      ? '⚠️ Camera permission denied — check Settings → Safari → Camera'
+      : '⚠️ Camera error — try manual entry';
+    status.textContent = msg;
     wrap.style.display = 'none';
     obCamActive = false;
   }
