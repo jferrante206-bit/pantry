@@ -1133,7 +1133,10 @@ select option { background: var(--surface); }
 
 <!-- HEADER -->
 <header>
-  <h1>🥫 Pantry</h1>
+  <div>
+    <h1>🥫 Pantry</h1>
+    <div style="font-size:0.62rem;color:var(--muted);font-family:'Source Code Pro',monospace;margin-top:1px">v1.0.0 — Initial Release</div>
+  </div>
   <div class="hdr-right" style="display:flex;align-items:center;gap:6px">
     <span id="sync-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s" title="Sync status"></span>
     <span id="hdr-count">0 items</span>
@@ -1536,6 +1539,30 @@ select option { background: var(--surface); }
       </div>
       <button class="btn btn-amber" style="width:100%;margin-bottom:8px" onclick="restartOnboarding(false)">🔄 Scan Again — Keep Existing Items</button>
       <button class="btn btn-red" style="width:100%" onclick="restartOnboarding(true)">🗑 Fresh Start — Clear Everything & Re-scan</button>
+    </div>
+
+    <div style="height:20px"></div>
+
+    <!-- Version History -->
+    <div class="help-section-label">Version History</div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;flex-direction:column;gap:14px">
+
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="flex-shrink:0;text-align:center">
+            <div style="font-family:'Source Code Pro',monospace;font-size:0.72rem;color:var(--orange);font-weight:700;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:3px 7px">v1.0.0</div>
+            <div style="font-size:0.62rem;color:var(--muted);margin-top:3px">Current</div>
+          </div>
+          <div>
+            <div style="font-weight:700;font-size:0.85rem;margin-bottom:4px">Initial Release</div>
+            <div style="font-size:0.78rem;color:var(--muted);line-height:1.6">
+              Barcode scanning · Pantry inventory · Grocery list · Amazon & Instacart split · Case size tracking · Reorder thresholds · Produce PLU codes · Onboarding wizard · Supabase cloud sync · PWA install
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
 
     <div style="height:20px"></div>
